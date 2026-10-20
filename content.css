@@ -1,0 +1,416 @@
+/**
+ * content.css - 超星学习通下载助手页面嵌入样式
+ * 采用独立前缀 cx-dl- 避免与宿主页面样式冲突
+ */
+
+/* 强制解除超星原网页隐藏下载按钮的样式 */
+.cx-unlock-shown {
+  display: inline-block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  cursor: pointer !important;
+}
+
+/* 在资料列表中就地注入的下载按钮 */
+.cx-inline-download-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  padding: 3px 8px !important;
+  margin: 0 4px !important;
+  background: linear-gradient(135deg, #1890ff, #096dd9) !important;
+  color: #ffffff !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  line-height: 1.4 !important;
+  border-radius: 4px !important;
+  text-decoration: none !important;
+  cursor: pointer !important;
+  box-shadow: 0 2px 4px rgba(24, 144, 255, 0.25) !important;
+  transition: all 0.2s ease !important;
+  vertical-align: middle !important;
+  z-index: 100 !important;
+}
+
+.cx-inline-download-btn:hover {
+  background: linear-gradient(135deg, #40a9ff, #1890ff) !important;
+  box-shadow: 0 4px 8px rgba(24, 144, 255, 0.35) !important;
+  transform: translateY(-1px) !important;
+  color: #ffffff !important;
+}
+
+/* 悬浮小球 (Floating Badge) */
+#cx-dl-floating-btn {
+  position: fixed;
+  right: 24px;
+  bottom: 80px;
+  width: 50px;
+  height: 50px;
+  background: linear-gradient(135deg, #1890ff, #2f54eb);
+  border-radius: 50%;
+  box-shadow: 0 6px 16px rgba(24, 144, 255, 0.38), 0 2px 6px rgba(0, 0, 0, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  z-index: 2147483640;
+  user-select: none;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+}
+
+#cx-dl-floating-btn:hover {
+  transform: scale(1.08);
+  box-shadow: 0 8px 20px rgba(24, 144, 255, 0.5);
+}
+
+#cx-dl-floating-btn:active {
+  cursor: grabbing;
+  transform: scale(0.96);
+}
+
+#cx-dl-floating-btn svg {
+  width: 26px;
+  height: 26px;
+  fill: #ffffff;
+  pointer-events: none;
+}
+
+/* 悬浮球右上角数量角标 */
+.cx-dl-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  background: #ff4d4f;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 4px rgba(255, 77, 79, 0.4);
+  pointer-events: none;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* 悬浮面板 (Floating Panel) */
+#cx-dl-panel {
+  position: fixed;
+  right: 24px;
+  bottom: 140px;
+  width: 360px;
+  max-width: calc(100vw - 48px);
+  max-height: 520px;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(220, 227, 238, 0.85);
+  border-radius: 14px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.16), 0 4px 12px rgba(0, 0, 0, 0.08);
+  z-index: 2147483640;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  animation: cxPanelFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  color: #262626;
+  box-sizing: border-box;
+}
+
+@keyframes cxPanelFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* 面板头部 */
+.cx-dl-header {
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #fafcff, #f0f5ff);
+  border-bottom: 1px solid #e8eef7;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cx-dl-header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f1f1f;
+}
+
+.cx-dl-header-title svg {
+  width: 18px;
+  height: 18px;
+  fill: #1890ff;
+}
+
+.cx-dl-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cx-dl-btn-icon {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  color: #595959;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.cx-dl-btn-icon:hover {
+  background: #e6f0ff;
+  color: #1890ff;
+}
+
+.cx-dl-btn-icon svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+/* 顶部操作条 (批量下载全部) */
+.cx-dl-toolbar {
+  padding: 8px 16px;
+  background: #ffffff;
+  border-bottom: 1px solid #f0f0f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+.cx-dl-batch-btn {
+  background: #1890ff;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: background 0.2s;
+}
+
+.cx-dl-batch-btn:hover {
+  background: #40a9ff;
+}
+
+.cx-dl-batch-btn:disabled {
+  background: #d9d9d9;
+  cursor: not-allowed;
+}
+
+/* 文件列表区 */
+.cx-dl-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 12px;
+  margin: 0;
+  list-style: none;
+  max-height: 340px;
+}
+
+.cx-dl-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.cx-dl-list::-webkit-scrollbar-thumb {
+  background: #d9d9d9;
+  border-radius: 3px;
+}
+
+.cx-dl-list::-webkit-scrollbar-thumb:hover {
+  background: #bfbfbf;
+}
+
+/* 空状态 */
+.cx-dl-empty {
+  text-align: center;
+  padding: 36px 16px;
+  color: #8c8c8c;
+  font-size: 13px;
+}
+
+.cx-dl-empty svg {
+  width: 42px;
+  height: 42px;
+  fill: #d9d9d9;
+  margin-bottom: 8px;
+}
+
+/* 单个文件卡片 */
+.cx-dl-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 10px;
+  margin-bottom: 8px;
+  background: #fbfcfe;
+  border: 1px solid #edf2f9;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.cx-dl-item:hover {
+  background: #ffffff;
+  border-color: #d2e4ff;
+  box-shadow: 0 3px 8px rgba(24, 144, 255, 0.08);
+}
+
+.cx-dl-item-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+/* 文件类型标签徽章 */
+.cx-dl-type-tag {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 5px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  min-width: 32px;
+  text-align: center;
+  color: #fff;
+}
+
+.cx-tag-ppt { background: #ff7a45; }
+.cx-tag-pdf { background: #ff4d4f; }
+.cx-tag-doc { background: #1890ff; }
+.cx-tag-xls { background: #52c41a; }
+.cx-tag-video { background: #722ed1; }
+.cx-tag-audio { background: #13c2c2; }
+.cx-tag-zip { background: #fa8c16; }
+.cx-tag-other { background: #8c8c8c; }
+
+.cx-dl-item-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.cx-dl-item-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #262626;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cx-dl-item-meta {
+  font-size: 11px;
+  color: #8c8c8c;
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cx-dl-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+.cx-dl-btn-action {
+  padding: 4px 8px;
+  font-size: 12px;
+  border-radius: 4px;
+  border: 1px solid #d9d9d9;
+  background: #ffffff;
+  color: #595959;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  transition: all 0.2s;
+}
+
+.cx-dl-btn-action:hover {
+  color: #1890ff;
+  border-color: #91d5ff;
+  background: #e6f7ff;
+}
+
+.cx-dl-btn-primary {
+  background: #1890ff;
+  color: #ffffff;
+  border-color: #1890ff;
+}
+
+.cx-dl-btn-primary:hover {
+  background: #40a9ff;
+  border-color: #40a9ff;
+  color: #ffffff;
+}
+
+/* 底部状态 */
+.cx-dl-footer {
+  padding: 8px 16px;
+  background: #fafafa;
+  border-top: 1px solid #f0f0f0;
+  font-size: 11px;
+  color: #8c8c8c;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Toast 提示 */
+.cx-dl-toast {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.85);
+  color: #ffffff;
+  padding: 8px 18px;
+  border-radius: 20px;
+  font-size: 13px;
+  z-index: 2147483647;
+  pointer-events: none;
+  animation: cxToastIn 0.25s ease, cxToastOut 0.25s ease 2.5s forwards;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+@keyframes cxToastIn {
+  from { opacity: 0; transform: translate(-50%, -10px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+@keyframes cxToastOut {
+  from { opacity: 1; transform: translate(-50%, 0); }
+  to { opacity: 0; transform: translate(-50%, -10px); }
+}

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1890ff"/>
+      <stop offset="100%" stop-color="#2f54eb"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#1890ff" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  <rect x="8" y="8" width="112" height="112" rx="28" fill="url(#grad)" filter="url(#shadow)"/>
+  <!-- 下载箭头与托盘 -->
+  <g fill="#ffffff">
+    <path d="M64 82a3 3 0 0 1-2.12-.88L39.88 59.12a3 3 0 0 1 4.24-4.24L61 71.76V28a3 3 0 0 1 6 0v43.76l16.88-16.88a3 3 0 0 1 4.24 4.24L66.12 81.12A3 3 0 0 1 64 82z"/>
+    <path d="M92 98H36a4 4 0 0 1-4-4V82a3 3 0 0 1 6 0v10h52V82a3 3 0 0 1 6 0v12a4 4 0 0 1-4 4z"/>
+  </g>
+</svg>
