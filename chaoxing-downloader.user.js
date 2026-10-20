@@ -385,21 +385,34 @@
 
   // 丝滑拖拽绑定
   function bindSmoothDraggable(handleElement) {
-    let isDragging = false;
+    let isDown = false;
+    let hasMoved = false;
     let startX = 0, startY = 0;
     let origPosX = 0, origPosY = 0;
     let rafId = null;
-    let currentDx = 0, currentDy = 0;
 
     function onPointerMove(e) {
-      if (!isDragging) return;
-      currentDx = e.clientX - startX;
-      currentDy = e.clientY - startY;
+      if (!isDown) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+
+      if (!hasMoved) {
+        if (Math.hypot(dx, dy) > 5) {
+          hasMoved = true;
+          document.body.style.userSelect = 'none';
+          document.body.style.cursor = 'grabbing';
+          const btn = document.getElementById('cx-tm-floating-btn');
+          const panel = document.getElementById('cx-tm-floating-panel');
+          if (btn) { btn.dataset.isDragging = 'true'; btn.classList.add('cx-dragging'); }
+          if (panel) panel.classList.add('cx-dragging');
+        }
+      }
+      if (!hasMoved) return;
 
       if (!rafId) {
         rafId = requestAnimationFrame(() => {
-          floatingPos.x = origPosX + currentDx;
-          floatingPos.y = origPosY + currentDy;
+          floatingPos.x = origPosX + dx;
+          floatingPos.y = origPosY + dy;
           updateLinkedPositions(false);
           rafId = null;
         });
@@ -407,8 +420,8 @@
     }
 
     function onPointerUp() {
-      if (!isDragging) return;
-      isDragging = false;
+      if (!isDown) return;
+      isDown = false;
       if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
 
       window.removeEventListener('mousemove', onPointerMove);
@@ -421,28 +434,24 @@
       if (btn) btn.classList.remove('cx-dragging');
       if (panel) panel.classList.remove('cx-dragging');
 
-      if (floatingPos.x < 36) floatingPos.x = 16;
-      else if (floatingPos.x > window.innerWidth - 88) floatingPos.x = window.innerWidth - 68;
-
-      updateLinkedPositions(true);
-      setTimeout(() => { if (btn) btn.dataset.isDragging = 'false'; }, 80);
+      if (hasMoved) {
+        if (floatingPos.x < 36) floatingPos.x = 16;
+        else if (floatingPos.x > window.innerWidth - 88) floatingPos.x = window.innerWidth - 68;
+        updateLinkedPositions(true);
+        setTimeout(() => { if (btn) btn.dataset.isDragging = 'false'; }, 80);
+      } else {
+        if (btn) btn.dataset.isDragging = 'false';
+      }
     }
 
     handleElement.addEventListener('mousedown', (e) => {
       if (e.target.closest('button') || e.target.closest('.cx-tm-tab-btn')) return;
-      isDragging = true;
+      isDown = true;
+      hasMoved = false;
       startX = e.clientX;
       startY = e.clientY;
       origPosX = floatingPos.x;
       origPosY = floatingPos.y;
-
-      const btn = document.getElementById('cx-tm-floating-btn');
-      const panel = document.getElementById('cx-tm-floating-panel');
-      if (btn) { btn.dataset.isDragging = 'true'; btn.classList.add('cx-dragging'); }
-      if (panel) panel.classList.add('cx-dragging');
-
-      document.body.style.userSelect = 'none';
-      document.body.style.cursor = 'grabbing';
 
       window.addEventListener('mousemove', onPointerMove, { passive: true });
       window.addEventListener('mouseup', onPointerUp);
@@ -946,18 +955,60 @@
     const listEl = document.getElementById('cx-tm-items');
     if (listEl) {
       listEl.innerHTML = '';
-      if (files.length === 0) {
-        if (folders && folders.length > 0) {
-          listEl.innerHTML = `
-            <div style="padding:12px;background:#fffbe6;color:#d46b08;font-size:12px;border-radius:6px;line-height:1.5;">
-              <strong>📁 当前目录下有 ${folders.length} 个文件夹：</strong><br>
-              请在网页中点击进入具体文件夹，或点击上方<strong>【全课程文件树】</strong>一键透视扫描！
-            </div>
-          `;
-        } else {
-          listEl.innerHTML = `<div style="text-align:center;padding:24px;color:#999;">正在嗅探中...</div>`;
-        }
+      if (files.length === 0 && (!folders || folders.length === 0)) {
+        listEl.innerHTML = `<div style="text-align:center;padding:24px;color:#999;">正在嗅探中...</div>`;
       } else {
+        if (folders && folders.length > 0) {
+          folders.forEach(f => {
+            const div = document.createElement('div');
+            div.className = 'cx-tm-item';
+            div.style.background = '#fcfdfe';
+            div.style.border = '1px solid #d6e4ff';
+            div.style.cursor = 'pointer';
+            div.innerHTML = `
+              <div class="cx-tm-item-title" style="color:#1d39c4;font-weight:600;">📁 ${f.name}</div>
+              <span style="font-size:11px;color:#1890ff;background:#e6f7ff;padding:2px 6px;border-radius:4px;">打开 ➔</span>
+            `;
+            div.addEventListener('click', async () => {
+              listEl.innerHTML = `<div style="text-align:center;padding:20px;color:#888;">正在打开文件夹 [${f.name}]...</div>`;
+              const ctx = getCourseContext();
+              try {
+                const res = await fetchFolderDataTM(ctx.courseid, ctx.clazzid, ctx.cpi, f.id);
+                listEl.innerHTML = `
+                  <div style="padding:6px;background:#f0f5ff;display:flex;justify-content:space-between;align-items:center;border-radius:4px;margin-bottom:6px;">
+                    <span style="font-weight:600;font-size:12px;">📁 ${f.name} (${res.files.length}个文件)</span>
+                    <button id="cx-tm-btn-back-root" style="border:1px solid #d9d9d9;background:#fff;padding:2px 6px;border-radius:4px;cursor:pointer;font-size:11px;">返回</button>
+                  </div>
+                `;
+                document.getElementById('cx-tm-btn-back-root').onclick = () => renderUI(files, folders);
+                res.files.forEach(sf => {
+                  const li = document.createElement('li');
+                  li.className = 'cx-tm-item';
+                  li.innerHTML = `
+                    <div class="cx-tm-item-title" title="${sf.name}">${sf.name}</div>
+                    <div class="cx-tm-actions">
+                      <button class="cx-tm-action-btn primary btn-dl">下载</button>
+                      <button class="cx-tm-action-btn btn-cp">直链</button>
+                    </div>
+                  `;
+                  li.querySelector('.btn-dl').addEventListener('click', () => downloadFile(sf));
+                  li.querySelector('.btn-cp').addEventListener('click', async () => {
+                    const resolved = await resolveOfficialDownloadInfo(sf);
+                    if (resolved && resolved.url) {
+                      if (typeof GM_setClipboard === 'function') GM_setClipboard(resolved.url);
+                      else navigator.clipboard.writeText(resolved.url);
+                      showToast('直链已复制！');
+                    }
+                  });
+                  listEl.appendChild(li);
+                });
+              } catch (e) {
+                showToast('打开文件夹失败');
+              }
+            });
+            listEl.appendChild(div);
+          });
+        }
         files.forEach(f => {
           const li = document.createElement('li');
           li.className = 'cx-tm-item';

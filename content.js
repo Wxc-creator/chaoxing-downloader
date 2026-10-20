@@ -511,21 +511,37 @@
 
   // 高性能丝滑拖拽引擎 (支持 requestAnimationFrame 60/120fps + 边缘缓冲吸附)
   function bindSmoothDraggable(handleElement, isPanelHeader = false) {
-    let isDragging = false;
+    let isDown = false;
+    let hasMoved = false;
     let startX = 0, startY = 0;
     let origPosX = 0, origPosY = 0;
     let rafId = null;
-    let currentDx = 0, currentDy = 0;
 
     function onPointerMove(e) {
-      if (!isDragging) return;
-      currentDx = e.clientX - startX;
-      currentDy = e.clientY - startY;
+      if (!isDown) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+
+      if (!hasMoved) {
+        if (Math.hypot(dx, dy) > 5) {
+          hasMoved = true;
+          document.body.style.userSelect = 'none';
+          document.body.style.cursor = 'grabbing';
+          const floatBtn = document.getElementById('cx-dl-floating-btn');
+          const panel = document.getElementById('cx-dl-panel');
+          if (floatBtn) {
+            floatBtn.dataset.isDragging = 'true';
+            floatBtn.classList.add('cx-dragging');
+          }
+          if (panel) panel.classList.add('cx-dragging');
+        }
+      }
+      if (!hasMoved) return;
 
       if (!rafId) {
         rafId = requestAnimationFrame(() => {
-          floatingPos.x = origPosX + currentDx;
-          floatingPos.y = origPosY + currentDy;
+          floatingPos.x = origPosX + dx;
+          floatingPos.y = origPosY + dy;
           updateLinkedPositions(false);
           rafId = null;
         });
@@ -533,8 +549,8 @@
     }
 
     function onPointerUp() {
-      if (!isDragging) return;
-      isDragging = false;
+      if (!isDown) return;
+      isDown = false;
       if (rafId) {
         cancelAnimationFrame(rafId);
         rafId = null;
@@ -550,43 +566,41 @@
       if (floatBtn) floatBtn.classList.remove('cx-dragging');
       if (panel) panel.classList.remove('cx-dragging');
 
-      // 边缘平滑微吸附
-      if (floatingPos.x < 36) floatingPos.x = 16;
-      else if (floatingPos.x > window.innerWidth - 88) floatingPos.x = window.innerWidth - 68;
+      if (hasMoved) {
+        // 微吸附
+        if (floatingPos.x < 36) floatingPos.x = 16;
+        else if (floatingPos.x > window.innerWidth - 88) floatingPos.x = window.innerWidth - 68;
+        updateLinkedPositions(true);
 
-      updateLinkedPositions(true);
-
-      setTimeout(() => {
+        setTimeout(() => {
+          if (floatBtn) floatBtn.dataset.isDragging = 'false';
+        }, 80);
+      } else {
         if (floatBtn) floatBtn.dataset.isDragging = 'false';
-      }, 80);
+      }
     }
 
     handleElement.addEventListener('mousedown', (e) => {
-      // 排除头部按钮的点击，避免误触发拖拽
+      // 排除头部按钮和输入交互的点击，避免误触发拖拽
       if (e.target.closest('button') || e.target.closest('.cx-dl-btn-icon') || e.target.closest('.cx-dl-tab-btn')) {
         return;
       }
-      isDragging = true;
+      isDown = true;
+      hasMoved = false;
       startX = e.clientX;
       startY = e.clientY;
       origPosX = floatingPos.x;
       origPosY = floatingPos.y;
 
-      const floatBtn = document.getElementById('cx-dl-floating-btn');
-      const panel = document.getElementById('cx-dl-panel');
-      if (floatBtn) {
-        floatBtn.dataset.isDragging = 'true';
-        floatBtn.classList.add('cx-dragging');
-      }
-      if (panel) panel.classList.add('cx-dragging');
-
-      document.body.style.userSelect = 'none';
-      document.body.style.cursor = 'grabbing';
-
       window.addEventListener('mousemove', onPointerMove, { passive: true });
       window.addEventListener('mouseup', onPointerUp);
     });
   }
+
+  // 文件夹内嵌层级浏览栈 (支持在插件内直接打开文件夹并展示下载)
+  let folderNavStack = [];
+  let activeNavFolder = null;
+  let activeFolderFiles = [];
 
   function createFloatingUI() {
     if (!isTopWindow) return;
@@ -632,18 +646,30 @@
           <svg viewBox="0 0 1024 1024" width="12" height="12" fill="currentColor">
             <path d="M854.6 288.6L639.4 73.4c-15.6-15.6-36.8-24.4-58.8-24.4H240c-44.2 0-80 35.8-80 80v768c0 44.2 35.8 80 80 80h544c44.2 0 80-35.8 80-80V347.4c0-22-8.8-43.2-24.4-58.8z"/>
           </svg>
-          页面课件
+          课程资料
         </button>
         <button class="cx-dl-tab-btn" id="cx-tab-tree">
           <svg viewBox="0 0 1024 1024" width="12" height="12" fill="currentColor">
             <path d="M880 298.4H521L437 138c-6.5-12.4-19.3-20.2-33.3-20.2H144c-22.1 0-40 17.9-40 40v696c0 22.1 17.9 40 40 40h736c22.1 0 40-17.9 40-40V338.4c0-22.1-17.9-40-40-40z"/>
           </svg>
-          全课程文件树
+          全课程透视
         </button>
       </div>
 
-      <!-- 视图 1：当前页面课件列表 -->
+      <!-- 视图 1：资料与文件夹浏览器 -->
       <div id="cx-view-files" style="display: flex; flex-direction: column; flex: 1; overflow: hidden;">
+        <div class="cx-dl-nav-bar" id="cx-dl-nav-bar" style="display: none;">
+          <div class="cx-dl-breadcrumb" id="cx-dl-breadcrumb">
+            <span class="cx-dl-crumb-link" id="cx-crumb-root">🏠 资料根目录</span>
+            <span style="color: #bfbfbf;">/</span>
+            <span id="cx-crumb-current" style="color: #1f1f1f; font-weight: 600;"></span>
+          </div>
+          <button class="cx-dl-btn-back" id="cx-btn-back" title="返回上一层目录">
+            <svg viewBox="0 0 1024 1024" width="10" height="10" fill="currentColor"><path d="M724 218.3V141c0-6.7-7.7-10.4-12.9-6.3L260.3 486.8a31.8 31.8 0 0 0 0 50.4l450.8 352.1c5.2 4.1 12.9.4 12.9-6.3v-77.3c0-4.8-2.3-9.3-6.1-12.2L357.2 512l360.7-281.5c3.8-2.9 6.1-7.4 6.1-12.2z"/></svg>
+            返回
+          </button>
+        </div>
+
         <div class="cx-dl-toolbar">
           <span id="cx-toolbar-count">已嗅探到 0 个文件</span>
           <button class="cx-dl-batch-btn" id="cx-btn-batch-all" disabled>
@@ -662,7 +688,7 @@
           <div class="cx-tree-scan-banner" id="cx-tree-banner">
             <div>
               <strong>全课程资料库透视</strong><br>
-              <span style="color: #595959; font-size: 11px;">自动递归扫描当前课程所有层级目录与内部文件</span>
+              <span style="color: #595959; font-size: 11px;">自动向下深度遍历整门课程的所有目录与课件</span>
             </div>
             <button class="cx-tree-scan-btn" id="cx-btn-scan-tree">
               <svg viewBox="0 0 1024 1024" width="12" height="12" fill="currentColor">
@@ -696,29 +722,53 @@
       updateLinkedPositions(true);
     });
 
-    floatBtn.addEventListener('click', () => {
+    // 点击小球展开/收起面板 (彻底杜绝拖拽干扰)
+    floatBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
       if (floatBtn.dataset.isDragging === 'true') return;
       uiPanelVisible = !uiPanelVisible;
       panel.style.display = uiPanelVisible ? 'flex' : 'none';
-      if (uiPanelVisible) updateLinkedPositions(true);
+      if (uiPanelVisible) {
+        updateLinkedPositions(false);
+        if (!activeNavFolder) {
+          renderFloatingUI(Array.from(discoveredFilesMap.values()), discoveredFoldersList);
+        }
+      }
     });
 
-    document.getElementById('cx-btn-close').addEventListener('click', () => {
+    document.getElementById('cx-btn-close').addEventListener('click', (e) => {
+      e.stopPropagation();
       uiPanelVisible = false;
       panel.style.display = 'none';
     });
 
     document.getElementById('cx-btn-refresh').addEventListener('click', () => {
-      runAllSniffers();
-      window.postMessage({ type: 'CX_INJECT_QUERY' }, '*');
-      showToast('已重新扫描当前目录');
+      if (activeNavFolder) {
+        openFolderInPanel(activeNavFolder);
+      } else {
+        runAllSniffers();
+        window.postMessage({ type: 'CX_INJECT_QUERY' }, '*');
+        showToast('已重新扫描当前目录');
+      }
+    });
+
+    // 面包屑返回上一级
+    document.getElementById('cx-btn-back').addEventListener('click', () => {
+      navigateBackFolder();
+    });
+
+    document.getElementById('cx-crumb-root').addEventListener('click', () => {
+      folderNavStack = [];
+      activeNavFolder = null;
+      document.getElementById('cx-dl-nav-bar').style.display = 'none';
+      renderFloatingUI(Array.from(discoveredFilesMap.values()), discoveredFoldersList);
     });
 
     document.getElementById('cx-btn-batch-all').addEventListener('click', () => {
-      const files = Array.from(discoveredFilesMap.values());
-      if (files.length === 0) return;
-      showToast(`正在批量下载 ${files.length} 个文件...`);
-      files.forEach((f, idx) => {
+      const targetFiles = activeNavFolder ? activeFolderFiles : Array.from(discoveredFilesMap.values());
+      if (targetFiles.length === 0) return;
+      showToast(`正在批量下载 ${targetFiles.length} 个文件...`);
+      targetFiles.forEach((f, idx) => {
         setTimeout(() => triggerDownload(f), idx * 1500);
       });
     });
@@ -750,6 +800,151 @@
 
     document.getElementById('cx-btn-scan-tree').addEventListener('click', () => {
       startFullCourseTreeScan();
+    });
+  }
+
+  // ================= 📁 插件内直接进入文件夹与浏览 =================
+
+  async function openFolderInPanel(folder) {
+    if (!folder) return;
+    activeNavFolder = folder;
+    if (!folderNavStack.some(item => item.id === folder.id)) {
+      folderNavStack.push(folder);
+    }
+
+    const listEl = document.getElementById('cx-file-list');
+    const navBar = document.getElementById('cx-dl-nav-bar');
+    const crumbCurrent = document.getElementById('cx-crumb-current');
+    const countLabel = document.getElementById('cx-toolbar-count');
+    const batchBtn = document.getElementById('cx-btn-batch-all');
+
+    if (navBar) navBar.style.display = 'flex';
+    if (crumbCurrent) crumbCurrent.textContent = folder.name;
+
+    if (listEl) {
+      listEl.innerHTML = `
+        <div class="cx-dl-empty">
+          <svg viewBox="0 0 1024 1024" style="animation: cxRotate 1.2s linear infinite;">
+            <path d="M756.2 304.3C684.2 232.4 586.3 192 481.9 192c-197.6 0-360 144.3-390.6 332.9-1.9 11.5 6.9 21.6 18.5 21.6h63.2c9.5 0 17.5-6.7 19.1-16.1C217.4 374.3 338 274.7 481.9 274.7c81 0 156.4 31.2 212.1 86.8L618.5 437c-15.1 15.1-4.4 41 17 41h208c11 0 20-9 20-20V250c0-21.4-25.9-32.1-41-17l-66.3 71.3z"/>
+          </svg>
+          <div>正在打开文件夹 [${folder.name}]...</div>
+        </div>
+      `;
+    }
+
+    const ctx = getCourseContext();
+    try {
+      const { folders, files } = await fetchFolderData(ctx.courseid, ctx.clazzid, ctx.cpi, folder.id);
+      activeFolderFiles = files;
+
+      if (countLabel) {
+        countLabel.textContent = `当前目录含 ${files.length} 个课件` + (folders.length > 0 ? ` / ${folders.length} 个子文件夹` : '');
+      }
+      if (batchBtn) batchBtn.disabled = files.length === 0;
+
+      renderFolderContentInList(folders, files);
+    } catch (e) {
+      showToast('打开文件夹失败: ' + (e.message || e));
+      if (listEl) {
+        listEl.innerHTML = `<div class="cx-dl-empty"><div>打开失败，请刷新或重试</div></div>`;
+      }
+    }
+  }
+
+  function navigateBackFolder() {
+    folderNavStack.pop();
+    if (folderNavStack.length === 0) {
+      activeNavFolder = null;
+      activeFolderFiles = [];
+      const navBar = document.getElementById('cx-dl-nav-bar');
+      if (navBar) navBar.style.display = 'none';
+      renderFloatingUI(Array.from(discoveredFilesMap.values()), discoveredFoldersList);
+    } else {
+      const prev = folderNavStack.pop();
+      openFolderInPanel(prev);
+    }
+  }
+
+  function renderFolderContentInList(folders, files) {
+    const listEl = document.getElementById('cx-file-list');
+    if (!listEl) return;
+    listEl.innerHTML = '';
+
+    if (folders.length === 0 && files.length === 0) {
+      listEl.innerHTML = `
+        <div class="cx-dl-empty">
+          <svg viewBox="0 0 1024 1024"><path d="M854.6 288.6L639.4 73.4c-15.6-15.6-36.8-24.4-58.8-24.4H240c-44.2 0-80 35.8-80 80v768c0 44.2 35.8 80 80 80h544c44.2 0 80-35.8 80-80V347.4c0-22-8.8-43.2-24.4-58.8z"/></svg>
+          <div>此文件夹为空，没有检测到文件</div>
+        </div>
+      `;
+      return;
+    }
+
+    // 先渲染子文件夹项 (点击直接进入该子文件夹)
+    folders.forEach(sub => {
+      const folderDiv = document.createElement('div');
+      folderDiv.className = 'cx-dl-item-folder';
+      folderDiv.innerHTML = `
+        <div style="display: flex; align-items: center; flex: 1; min-width: 0;">
+          <span class="cx-dl-folder-icon">📁</span>
+          <span class="cx-dl-folder-title" title="${sub.name}">${sub.name}</span>
+        </div>
+        <span class="cx-dl-folder-action-enter">打开文件夹 ➔</span>
+      `;
+      folderDiv.addEventListener('click', () => {
+        openFolderInPanel(sub);
+      });
+      listEl.appendChild(folderDiv);
+    });
+
+    // 渲染该文件夹下的所有具体文件
+    files.forEach(file => {
+      const typeInfo = getFileTypeTag(file);
+      const li = document.createElement('li');
+      li.className = 'cx-dl-item';
+      li.innerHTML = `
+        <div class="cx-dl-item-left">
+          <span class="cx-dl-type-tag ${typeInfo.cls}">${typeInfo.label}</span>
+          <div class="cx-dl-item-info">
+            <div class="cx-dl-item-name" title="${file.name || '未命名文件'}">${file.name || '未命名文件'}</div>
+            <div class="cx-dl-item-meta">
+              <span>${file.source || '课件'}</span>
+              ${file.sizeText ? `<span>${file.sizeText}</span>` : (file.size ? `<span>${formatFileSize(file.size)}</span>` : '')}
+            </div>
+          </div>
+        </div>
+        <div class="cx-dl-item-actions">
+          <button class="cx-dl-btn-action cx-dl-btn-primary cx-action-download" title="保存原始格式">
+            <svg viewBox="0 0 1024 1024" width="12" height="12" fill="currentColor">
+              <path d="M505.7 661a8 8 0 0 0 12.6 0l112-141.7c4.1-5.2.4-12.9-6.3-12.9h-74.1V168c0-4.4-3.6-8-8-8h-60c-4.4 0-8 3.6-8 8v338.3H400c-6.7 0-10.4 7.7-6.3 12.9l112 141.8zM878 626h-60c-4.4 0-8 3.6-8 8v154H214V634c0-4.4-3.6-8-8-8h-60c-4.4 0-8 3.6-8 8v198c0 17.7 14.3 32 32 32h684c17.7 0 32-14.3 32-32V634c0-4.4-3.6-8-8-8z"/>
+            </svg>
+            下载
+          </button>
+          <button class="cx-dl-btn-action cx-action-copy" title="获取直链">
+            <svg viewBox="0 0 1024 1024" width="12" height="12" fill="currentColor">
+              <path d="M832 64H296c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h496v496c0 4.4 3.6 8 8 8h56c4.4 0 8-3.6 8-8V104c0-22.1-17.9-40-40-40zM704 192H192c-17.7 0-32 14.3-32 32v672c0 17.7 14.3 32 32 32h512c17.7 0 32-14.3 32-32V224c0-17.7-14.3-32-32-32zm-40 664H232V264h432v592z"/>
+            </svg>
+          </button>
+        </div>
+      `;
+
+      li.querySelector('.cx-action-download').addEventListener('click', () => {
+        triggerDownload(file);
+      });
+
+      li.querySelector('.cx-action-copy').addEventListener('click', () => {
+        showToast('正在解析直链...');
+        chrome.runtime.sendMessage({
+          type: 'RESOLVE_OBJECT_INFO',
+          objectid: file.objectid
+        }, (res) => {
+          const u = (res && res.data && res.data.download) ? res.data.download : file.url;
+          if (u) copyToClipboard(u);
+          else showToast('无法解析直链');
+        });
+      });
+
+      listEl.appendChild(li);
     });
   }
 
@@ -1017,99 +1212,125 @@
     if (!isTopWindow) return;
     createFloatingUI();
 
-    const count = files.length;
+    // 如果用户当前正在插件内浏览某个子文件夹，不被后台自动扫描重置界面
+    if (activeNavFolder !== null) return;
+
+    const count = files ? files.length : 0;
+    const folderCount = folders ? folders.length : 0;
+    const totalCount = count + folderCount;
+
     const badge = document.querySelector('.cx-dl-badge');
     if (badge) {
-      badge.textContent = count > 99 ? '99+' : count;
-      badge.style.display = count > 0 ? 'flex' : 'none';
+      const showNum = count > 0 ? count : folderCount;
+      badge.textContent = showNum > 99 ? '99+' : showNum;
+      badge.style.display = totalCount > 0 ? 'flex' : 'none';
     }
 
     const countLabel = document.getElementById('cx-toolbar-count');
-    if (countLabel) countLabel.textContent = `已嗅探到 ${count} 个课件/文件`;
+    if (countLabel) {
+      if (count > 0 && folderCount > 0) {
+        countLabel.textContent = `当前目录含 ${count} 个课件 / ${folderCount} 个文件夹`;
+      } else if (folderCount > 0) {
+        countLabel.textContent = `检测到 ${folderCount} 个文件夹 (点击直接进入)`;
+      } else {
+        countLabel.textContent = `已嗅探到 ${count} 个课件/文件`;
+      }
+    }
 
     const batchBtn = document.getElementById('cx-btn-batch-all');
     if (batchBtn) batchBtn.disabled = count === 0;
 
     const listEl = document.getElementById('cx-file-list');
     if (!listEl) return;
+    listEl.innerHTML = '';
 
-    if (count === 0) {
-      if (folders && folders.length > 0) {
-        let folderHtml = `
-          <div style="padding: 16px; background: #fffbe6; border: 1px solid #ffe58f; border-radius: 8px; margin: 8px 4px; font-size: 12px; color: #d46b08; line-height: 1.6;">
-            <strong>📁 当前目录下检测到 ${folders.length} 个文件夹：</strong><br>
-            <span style="color: #8c8c8c;">文件夹不能直接单文件下载，请在网页中<strong>点击进入具体的文件夹</strong>（如同学的作业文件夹），助手将立即提取并下载内部文件！</span>
-            <ul style="margin-top: 8px; padding-left: 18px; max-height: 150px; overflow-y: auto; color: #595959;">
-        `;
-        folders.forEach(f => { folderHtml += `<li>📁 ${f.name}</li>`; });
-        folderHtml += `</ul></div>`;
-        listEl.innerHTML = folderHtml;
-      } else {
-        listEl.innerHTML = `
-          <div class="cx-dl-empty">
-            <svg viewBox="0 0 1024 1024">
-              <path d="M854.6 288.6L639.4 73.4c-15.6-15.6-36.8-24.4-58.8-24.4H240c-44.2 0-80 35.8-80 80v768c0 44.2 35.8 80 80 80h544c44.2 0 80-35.8 80-80V347.4c0-22-8.8-43.2-24.4-58.8zM604 139.4l156.6 156.6H604V139.4zM792 896H240V128h300v200c0 17.7 14.3 32 32 32h220v536z"/>
-            </svg>
-            <div>正在嗅探当前目录下的课件...<br><small style="color: #bfbfbf;">若页面有文件夹，请点击进入具体文件夹</small></div>
-          </div>
-        `;
-      }
+    if (totalCount === 0) {
+      listEl.innerHTML = `
+        <div class="cx-dl-empty">
+          <svg viewBox="0 0 1024 1024">
+            <path d="M854.6 288.6L639.4 73.4c-15.6-15.6-36.8-24.4-58.8-24.4H240c-44.2 0-80 35.8-80 80v768c0 44.2 35.8 80 80 80h544c44.2 0 80-35.8 80-80V347.4c0-22-8.8-43.2-24.4-58.8zM604 139.4l156.6 156.6H604V139.4zM792 896H240V128h300v200c0 17.7 14.3 32 32 32h220v536z"/>
+          </svg>
+          <div>正在嗅探当前目录下的课件...<br><small style="color: #bfbfbf;">若页面有文件夹，将在此处直接呈现并支持进入</small></div>
+        </div>
+      `;
       return;
     }
 
-    listEl.innerHTML = '';
-    files.forEach((file) => {
-      const typeInfo = getFileTypeTag(file);
-      const li = document.createElement('li');
-      li.className = 'cx-dl-item';
+    // 1. 优先渲染所有检测到的文件夹：用户可以直接在插件面板内点击打开文件夹！
+    if (folders && folders.length > 0) {
+      folders.forEach(f => {
+        const folderDiv = document.createElement('div');
+        folderDiv.className = 'cx-dl-item-folder';
+        folderDiv.title = `点击直接在插件中打开: ${f.name}`;
+        folderDiv.innerHTML = `
+          <div style="display: flex; align-items: center; flex: 1; min-width: 0;">
+            <span class="cx-dl-folder-icon">📁</span>
+            <span class="cx-dl-folder-title" title="${f.name}">${f.name}</span>
+          </div>
+          <span class="cx-dl-folder-action-enter">打开文件夹 ➔</span>
+        `;
+        folderDiv.addEventListener('click', () => {
+          openFolderInPanel(f);
+        });
+        listEl.appendChild(folderDiv);
+      });
+    }
 
-      li.innerHTML = `
-        <div class="cx-dl-item-left">
-          <span class="cx-dl-type-tag ${typeInfo.cls}">${typeInfo.label}</span>
-          <div class="cx-dl-item-info">
-            <div class="cx-dl-item-name" title="${file.name || '未命名文件'}">${file.name || '未命名文件'}</div>
-            <div class="cx-dl-item-meta">
-              <span>${file.source || '课件'}</span>
-              ${file.sizeText ? `<span>${file.sizeText}</span>` : (file.size ? `<span>${formatFileSize(file.size)}</span>` : '')}
+    // 2. 渲染当前目录下的具体课件文件
+    if (files && files.length > 0) {
+      files.forEach((file) => {
+        const typeInfo = getFileTypeTag(file);
+        const li = document.createElement('li');
+        li.className = 'cx-dl-item';
+
+        li.innerHTML = `
+          <div class="cx-dl-item-left">
+            <span class="cx-dl-type-tag ${typeInfo.cls}">${typeInfo.label}</span>
+            <div class="cx-dl-item-info">
+              <div class="cx-dl-item-name" title="${file.name || '未命名文件'}">${file.name || '未命名文件'}</div>
+              <div class="cx-dl-item-meta">
+                <span>${file.source || '课件'}</span>
+                ${file.sizeText ? `<span>${file.sizeText}</span>` : (file.size ? `<span>${formatFileSize(file.size)}</span>` : '')}
+              </div>
             </div>
           </div>
-        </div>
-        <div class="cx-dl-item-actions">
-          <button class="cx-dl-btn-action cx-dl-btn-primary cx-action-download" title="保存原始格式">
-            <svg viewBox="0 0 1024 1024" width="12" height="12" fill="currentColor">
-              <path d="M505.7 661a8 8 0 0 0 12.6 0l112-141.7c4.1-5.2.4-12.9-6.3-12.9h-74.1V168c0-4.4-3.6-8-8-8h-60c-4.4 0-8 3.6-8 8v338.3H400c-6.7 0-10.4 7.7-6.3 12.9l112 141.8zM878 626h-60c-4.4 0-8 3.6-8 8v154H214V634c0-4.4-3.6-8-8-8h-60c-4.4 0-8 3.6-8 8v198c0 17.7 14.3 32 32 32h684c17.7 0 32-14.3 32-32V634c0-4.4-3.6-8-8-8z"/>
-            </svg>
-            下载
-          </button>
-          <button class="cx-dl-btn-action cx-action-copy" title="获取直链">
-            <svg viewBox="0 0 1024 1024" width="12" height="12" fill="currentColor">
-              <path d="M832 64H296c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h496v496c0 4.4 3.6 8 8 8h56c4.4 0 8-3.6 8-8V104c0-22.1-17.9-40-40-40zM704 192H192c-17.7 0-32 14.3-32 32v672c0 17.7 14.3 32 32 32h512c17.7 0 32-14.3 32-32V224c0-17.7-14.3-32-32-32zm-40 664H232V264h432v592z"/>
-            </svg>
-          </button>
-        </div>
-      `;
+          <div class="cx-dl-item-actions">
+            <button class="cx-dl-btn-action cx-dl-btn-primary cx-action-download" title="保存原始格式">
+              <svg viewBox="0 0 1024 1024" width="12" height="12" fill="currentColor">
+                <path d="M505.7 661a8 8 0 0 0 12.6 0l112-141.7c4.1-5.2.4-12.9-6.3-12.9h-74.1V168c0-4.4-3.6-8-8-8h-60c-4.4 0-8 3.6-8 8v338.3H400c-6.7 0-10.4 7.7-6.3 12.9l112 141.8zM878 626h-60c-4.4 0-8 3.6-8 8v154H214V634c0-4.4-3.6-8-8-8h-60c-4.4 0-8 3.6-8 8v198c0 17.7 14.3 32 32 32h684c17.7 0 32-14.3 32-32V634c0-4.4-3.6-8-8-8z"/>
+              </svg>
+              下载
+            </button>
+            <button class="cx-dl-btn-action cx-action-copy" title="获取直链">
+              <svg viewBox="0 0 1024 1024" width="12" height="12" fill="currentColor">
+                <path d="M832 64H296c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h496v496c0 4.4 3.6 8 8 8h56c4.4 0 8-3.6 8-8V104c0-22.1-17.9-40-40-40zM704 192H192c-17.7 0-32 14.3-32 32v672c0 17.7 14.3 32 32 32h512c17.7 0 32-14.3 32-32V224c0-17.7-14.3-32-32-32zm-40 664H232V264h432v592z"/>
+              </svg>
+            </button>
+          </div>
+        `;
 
-      li.querySelector('.cx-action-download').addEventListener('click', () => {
-        triggerDownload(file);
-      });
-
-      li.querySelector('.cx-action-copy').addEventListener('click', () => {
-        showToast('正在解析直链...');
-        chrome.runtime.sendMessage({
-          type: 'RESOLVE_OBJECT_INFO',
-          objectid: file.objectid
-        }, (res) => {
-          const u = (res && res.data && res.data.download) ? res.data.download : file.url;
-          if (u) {
-            copyToClipboard(u);
-          } else {
-            showToast('无法解析直链');
-          }
+        li.querySelector('.cx-action-download').addEventListener('click', () => {
+          triggerDownload(file);
         });
-      });
 
-      listEl.appendChild(li);
-    });
+        li.querySelector('.cx-action-copy').addEventListener('click', () => {
+          showToast('正在解析直链...');
+          chrome.runtime.sendMessage({
+            type: 'RESOLVE_OBJECT_INFO',
+            objectid: file.objectid
+          }, (res) => {
+            const u = (res && res.data && res.data.download) ? res.data.download : file.url;
+            if (u) {
+              copyToClipboard(u);
+            } else {
+              showToast('无法解析直链');
+            }
+          });
+        });
+
+        listEl.appendChild(li);
+      });
+    }
   }
 
   // ================= 跨 frame 消息监听 =================
