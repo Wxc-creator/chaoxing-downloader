@@ -3,6 +3,7 @@
 downloads/
 *.tmp
 *.log
+*.zip
 
 # 临时开发与调试脚本
 scratch*.js
