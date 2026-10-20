@@ -416,7 +416,177 @@
     } catch (e) {}
   }
 
-  // ================= 悬浮窗 UI =================
+  // ================= 悬浮窗 UI 与联动自适应系统 =================
+
+  let floatingPos = {
+    x: Math.max(20, window.innerWidth - 76),
+    y: Math.max(20, window.innerHeight - 96)
+  };
+  let currentActiveTab = 'files'; // 'files' | 'tree'
+  let courseFileTree = null;
+  let isScanningTree = false;
+
+  // 获取当前课程上下文参数 (courseid, clazzid, cpi, enc)
+  function getCourseContext() {
+    const urlsToSearch = [location.href, document.referrer || ''];
+    try {
+      if (window.top && window.top.location.href) urlsToSearch.push(window.top.location.href);
+    } catch (e) {}
+
+    let courseid = '', clazzid = '', cpi = '', enc = '';
+    for (const u of urlsToSearch) {
+      if (!u) continue;
+      try {
+        const parsed = new URL(u, location.origin);
+        if (!courseid) courseid = parsed.searchParams.get('courseid') || parsed.searchParams.get('courseId') || '';
+        if (!clazzid) clazzid = parsed.searchParams.get('clazzid') || parsed.searchParams.get('clazzId') || '';
+        if (!cpi) cpi = parsed.searchParams.get('cpi') || '';
+        if (!enc) enc = parsed.searchParams.get('enc') || '';
+      } catch (e) {}
+    }
+
+    if (!courseid) {
+      const m = document.cookie.match(/(\d{6,12})cpi=(\d+)/);
+      if (m) {
+        courseid = m[1];
+        cpi = m[2];
+      }
+    }
+    return { courseid, clazzid, cpi, enc };
+  }
+
+  // 联动坐标更新函数：同时精准驱动悬浮球与展开面板，四向智能自适应避障
+  function updateLinkedPositions(animate = false) {
+    const floatBtn = document.getElementById('cx-dl-floating-btn');
+    const panel = document.getElementById('cx-dl-panel');
+    if (!floatBtn) return;
+
+    // 限制小球在视口内安全区域
+    const minX = 12, maxX = window.innerWidth - 64;
+    const minY = 12, maxY = window.innerHeight - 64;
+    floatingPos.x = Math.max(minX, Math.min(maxX, floatingPos.x));
+    floatingPos.y = Math.max(minY, Math.min(maxY, floatingPos.y));
+
+    floatBtn.style.transform = `translate3d(${floatingPos.x}px, ${floatingPos.y}px, 0)`;
+    floatBtn.style.transition = animate ? 'transform 0.28s cubic-bezier(0.25, 1, 0.5, 1), box-shadow 0.25s ease' : 'none';
+
+    if (!panel) return;
+
+    // 计算展开面板的四向自适应尺寸与坐标
+    const panelWidth = Math.min(440, window.innerWidth - 24);
+    const panelHeight = Math.min(560, window.innerHeight - 40);
+
+    let panelX, panelY;
+
+    // 水平方向自适应：根据小球在屏幕左右半区决定向左展开还是向右展开
+    if (floatingPos.x > window.innerWidth / 2) {
+      panelX = floatingPos.x + 52 - panelWidth;
+      if (panelX < 12) panelX = 12;
+    } else {
+      panelX = floatingPos.x;
+      if (panelX + panelWidth > window.innerWidth - 12) panelX = window.innerWidth - panelWidth - 12;
+    }
+
+    // 垂直方向自适应：根据小球在屏幕上下半区决定向上展开还是向下展开
+    if (floatingPos.y > window.innerHeight / 2) {
+      panelY = floatingPos.y - panelHeight - 12;
+      if (panelY < 12) {
+        panelY = 12;
+        panel.style.maxHeight = Math.max(260, floatingPos.y - 24) + 'px';
+      } else {
+        panel.style.maxHeight = panelHeight + 'px';
+      }
+    } else {
+      panelY = floatingPos.y + 52 + 12;
+      if (panelY + panelHeight > window.innerHeight - 12) {
+        panel.style.maxHeight = Math.max(260, window.innerHeight - panelY - 12) + 'px';
+      } else {
+        panel.style.maxHeight = panelHeight + 'px';
+      }
+    }
+
+    panel.style.transform = `translate3d(${panelX}px, ${panelY}px, 0)`;
+    panel.style.transition = animate ? 'transform 0.28s cubic-bezier(0.25, 1, 0.5, 1), box-shadow 0.25s ease' : 'none';
+  }
+
+  // 高性能丝滑拖拽引擎 (支持 requestAnimationFrame 60/120fps + 边缘缓冲吸附)
+  function bindSmoothDraggable(handleElement, isPanelHeader = false) {
+    let isDragging = false;
+    let startX = 0, startY = 0;
+    let origPosX = 0, origPosY = 0;
+    let rafId = null;
+    let currentDx = 0, currentDy = 0;
+
+    function onPointerMove(e) {
+      if (!isDragging) return;
+      currentDx = e.clientX - startX;
+      currentDy = e.clientY - startY;
+
+      if (!rafId) {
+        rafId = requestAnimationFrame(() => {
+          floatingPos.x = origPosX + currentDx;
+          floatingPos.y = origPosY + currentDy;
+          updateLinkedPositions(false);
+          rafId = null;
+        });
+      }
+    }
+
+    function onPointerUp() {
+      if (!isDragging) return;
+      isDragging = false;
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+
+      window.removeEventListener('mousemove', onPointerMove);
+      window.removeEventListener('mouseup', onPointerUp);
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+
+      const floatBtn = document.getElementById('cx-dl-floating-btn');
+      const panel = document.getElementById('cx-dl-panel');
+      if (floatBtn) floatBtn.classList.remove('cx-dragging');
+      if (panel) panel.classList.remove('cx-dragging');
+
+      // 边缘平滑微吸附
+      if (floatingPos.x < 36) floatingPos.x = 16;
+      else if (floatingPos.x > window.innerWidth - 88) floatingPos.x = window.innerWidth - 68;
+
+      updateLinkedPositions(true);
+
+      setTimeout(() => {
+        if (floatBtn) floatBtn.dataset.isDragging = 'false';
+      }, 80);
+    }
+
+    handleElement.addEventListener('mousedown', (e) => {
+      // 排除头部按钮的点击，避免误触发拖拽
+      if (e.target.closest('button') || e.target.closest('.cx-dl-btn-icon') || e.target.closest('.cx-dl-tab-btn')) {
+        return;
+      }
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      origPosX = floatingPos.x;
+      origPosY = floatingPos.y;
+
+      const floatBtn = document.getElementById('cx-dl-floating-btn');
+      const panel = document.getElementById('cx-dl-panel');
+      if (floatBtn) {
+        floatBtn.dataset.isDragging = 'true';
+        floatBtn.classList.add('cx-dragging');
+      }
+      if (panel) panel.classList.add('cx-dragging');
+
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'grabbing';
+
+      window.addEventListener('mousemove', onPointerMove, { passive: true });
+      window.addEventListener('mouseup', onPointerUp);
+    });
+  }
 
   function createFloatingUI() {
     if (!isTopWindow) return;
@@ -424,7 +594,7 @@
 
     const floatBtn = document.createElement('div');
     floatBtn.id = 'cx-dl-floating-btn';
-    floatBtn.title = '超星课件与资料下载助手 (点击展开/拖动可调整位置)';
+    floatBtn.title = '超星课件与资料下载助手 (点击展开/按住可随意拖拽)';
     floatBtn.innerHTML = `
       <svg viewBox="0 0 1024 1024">
         <path d="M505.7 661a8 8 0 0 0 12.6 0l112-141.7c4.1-5.2.4-12.9-6.3-12.9h-74.1V168c0-4.4-3.6-8-8-8h-60c-4.4 0-8 3.6-8 8v338.3H400c-6.7 0-10.4 7.7-6.3 12.9l112 141.8zM878 626h-60c-4.4 0-8 3.6-8 8v154H214V634c0-4.4-3.6-8-8-8h-60c-4.4 0-8 3.6-8 8v198c0 17.7 14.3 32 32 32h684c17.7 0 32-14.3 32-32V634c0-4.4-3.6-8-8-8z"/>
@@ -436,7 +606,7 @@
     panel.id = 'cx-dl-panel';
     panel.style.display = 'none';
     panel.innerHTML = `
-      <div class="cx-dl-header">
+      <div class="cx-dl-header" title="按住标题栏可随意拖动面板">
         <div class="cx-dl-header-title">
           <svg viewBox="0 0 1024 1024">
             <path d="M505.7 661a8 8 0 0 0 12.6 0l112-141.7c4.1-5.2.4-12.9-6.3-12.9h-74.1V168c0-4.4-3.6-8-8-8h-60c-4.4 0-8 3.6-8 8v338.3H400c-6.7 0-10.4 7.7-6.3 12.9l112 141.8zM878 626h-60c-4.4 0-8 3.6-8 8v154H214V634c0-4.4-3.6-8-8-8h-60c-4.4 0-8 3.6-8 8v198c0 17.7 14.3 32 32 32h684c17.7 0 32-14.3 32-32V634c0-4.4-3.6-8-8-8z"/>
@@ -456,29 +626,81 @@
           </button>
         </div>
       </div>
-      <div class="cx-dl-toolbar">
-        <span id="cx-toolbar-count">已嗅探到 0 个文件</span>
-        <button class="cx-dl-batch-btn" id="cx-btn-batch-all" disabled>
+
+      <div class="cx-dl-tabs">
+        <button class="cx-dl-tab-btn active" id="cx-tab-files">
           <svg viewBox="0 0 1024 1024" width="12" height="12" fill="currentColor">
-            <path d="M505.7 661a8 8 0 0 0 12.6 0l112-141.7c4.1-5.2.4-12.9-6.3-12.9h-74.1V168c0-4.4-3.6-8-8-8h-60c-4.4 0-8 3.6-8 8v338.3H400c-6.7 0-10.4 7.7-6.3 12.9l112 141.8zM878 626h-60c-4.4 0-8 3.6-8 8v154H214V634c0-4.4-3.6-8-8-8h-60c-4.4 0-8 3.6-8 8v198c0 17.7 14.3 32 32 32h684c17.7 0 32-14.3 32-32V634c0-4.4-3.6-8-8-8z"/>
+            <path d="M854.6 288.6L639.4 73.4c-15.6-15.6-36.8-24.4-58.8-24.4H240c-44.2 0-80 35.8-80 80v768c0 44.2 35.8 80 80 80h544c44.2 0 80-35.8 80-80V347.4c0-22-8.8-43.2-24.4-58.8z"/>
           </svg>
-          一键下载全部
+          页面课件
+        </button>
+        <button class="cx-dl-tab-btn" id="cx-tab-tree">
+          <svg viewBox="0 0 1024 1024" width="12" height="12" fill="currentColor">
+            <path d="M880 298.4H521L437 138c-6.5-12.4-19.3-20.2-33.3-20.2H144c-22.1 0-40 17.9-40 40v696c0 22.1 17.9 40 40 40h736c22.1 0 40-17.9 40-40V338.4c0-22.1-17.9-40-40-40z"/>
+          </svg>
+          全课程文件树
         </button>
       </div>
-      <ul class="cx-dl-list" id="cx-file-list"></ul>
+
+      <!-- 视图 1：当前页面课件列表 -->
+      <div id="cx-view-files" style="display: flex; flex-direction: column; flex: 1; overflow: hidden;">
+        <div class="cx-dl-toolbar">
+          <span id="cx-toolbar-count">已嗅探到 0 个文件</span>
+          <button class="cx-dl-batch-btn" id="cx-btn-batch-all" disabled>
+            <svg viewBox="0 0 1024 1024" width="12" height="12" fill="currentColor">
+              <path d="M505.7 661a8 8 0 0 0 12.6 0l112-141.7c4.1-5.2.4-12.9-6.3-12.9h-74.1V168c0-4.4-3.6-8-8-8h-60c-4.4 0-8 3.6-8 8v338.3H400c-6.7 0-10.4 7.7-6.3 12.9l112 141.8zM878 626h-60c-4.4 0-8 3.6-8 8v154H214V634c0-4.4-3.6-8-8-8h-60c-4.4 0-8 3.6-8 8v198c0 17.7 14.3 32 32 32h684c17.7 0 32-14.3 32-32V634c0-4.4-3.6-8-8-8z"/>
+            </svg>
+            一键下载全部
+          </button>
+        </div>
+        <ul class="cx-dl-list" id="cx-file-list"></ul>
+      </div>
+
+      <!-- 视图 2：全课程结构文件树 -->
+      <div id="cx-view-tree" style="display: none; flex-direction: column; flex: 1; overflow: hidden;">
+        <div class="cx-tree-container" id="cx-tree-container">
+          <div class="cx-tree-scan-banner" id="cx-tree-banner">
+            <div>
+              <strong>全课程资料库透视</strong><br>
+              <span style="color: #595959; font-size: 11px;">自动递归扫描当前课程所有层级目录与内部文件</span>
+            </div>
+            <button class="cx-tree-scan-btn" id="cx-btn-scan-tree">
+              <svg viewBox="0 0 1024 1024" width="12" height="12" fill="currentColor">
+                <path d="M756.2 304.3C684.2 232.4 586.3 192 481.9 192c-197.6 0-360 144.3-390.6 332.9-1.9 11.5 6.9 21.6 18.5 21.6h63.2c9.5 0 17.5-6.7 19.1-16.1C217.4 374.3 338 274.7 481.9 274.7c81 0 156.4 31.2 212.1 86.8L618.5 437c-15.1 15.1-4.4 41 17 41h208c11 0 20-9 20-20V250c0-21.4-25.9-32.1-41-17l-66.3 71.3z"/>
+              </svg>
+              一键扫描
+            </button>
+          </div>
+          <div id="cx-tree-content"></div>
+        </div>
+      </div>
+
       <div class="cx-dl-footer">
-        <span>已绕过教师禁止下载限制</span>
-        <span>原始格式与文件名已锁定</span>
+        <span>支持拖拽与四向自适应</span>
+        <span>原始文件名格式保障</span>
       </div>
     `;
 
     document.body.appendChild(floatBtn);
     document.body.appendChild(panel);
 
+    // 初始位置设置
+    updateLinkedPositions(false);
+
+    // 绑定小球与面板头部双向丝滑拖拽
+    bindSmoothDraggable(floatBtn, false);
+    bindSmoothDraggable(panel.querySelector('.cx-dl-header'), true);
+
+    // 视口尺寸变化防跑出屏幕
+    window.addEventListener('resize', () => {
+      updateLinkedPositions(true);
+    });
+
     floatBtn.addEventListener('click', () => {
       if (floatBtn.dataset.isDragging === 'true') return;
       uiPanelVisible = !uiPanelVisible;
       panel.style.display = uiPanelVisible ? 'flex' : 'none';
+      if (uiPanelVisible) updateLinkedPositions(true);
     });
 
     document.getElementById('cx-btn-close').addEventListener('click', () => {
@@ -501,44 +723,294 @@
       });
     });
 
-    bindDraggable(floatBtn);
+    // Tab 切换逻辑
+    const tabFiles = document.getElementById('cx-tab-files');
+    const tabTree = document.getElementById('cx-tab-tree');
+    const viewFiles = document.getElementById('cx-view-files');
+    const viewTree = document.getElementById('cx-view-tree');
+
+    tabFiles.addEventListener('click', () => {
+      currentActiveTab = 'files';
+      tabFiles.classList.add('active');
+      tabTree.classList.remove('active');
+      viewFiles.style.display = 'flex';
+      viewTree.style.display = 'none';
+    });
+
+    tabTree.addEventListener('click', () => {
+      currentActiveTab = 'tree';
+      tabTree.classList.add('active');
+      tabFiles.classList.remove('active');
+      viewFiles.style.display = 'none';
+      viewTree.style.display = 'flex';
+      if (!courseFileTree && !isScanningTree) {
+        startFullCourseTreeScan();
+      }
+    });
+
+    document.getElementById('cx-btn-scan-tree').addEventListener('click', () => {
+      startFullCourseTreeScan();
+    });
   }
 
-  function bindDraggable(element) {
-    let isDown = false;
-    let startX = 0, startY = 0;
-    let initialX = 0, initialY = 0;
+  // ================= 🌳 递归爬取全课程文件树 =================
 
-    element.addEventListener('mousedown', (e) => {
-      isDown = true;
-      element.dataset.isDragging = 'false';
-      startX = e.clientX;
-      startY = e.clientY;
-      const rect = element.getBoundingClientRect();
-      initialX = rect.left;
-      initialY = rect.top;
-      element.style.transition = 'none';
+  async function fetchFolderData(courseid, clazzid, cpi, dataId = '') {
+    const url = `/mooc2-ans/coursedata/stu-datalist?courseid=${courseid}&clazzid=${clazzid}&cpi=${cpi}&dataId=${dataId}`;
+    const resp = await fetch(url, { credentials: 'include' });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const htmlText = await resp.text();
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(htmlText, 'text/html');
+    const items = doc.querySelectorAll('ul.dataBody_td, .dataBody_td');
+
+    const folders = [];
+    const files = [];
+
+    items.forEach(el => {
+      const type = (el.getAttribute('type') || '').toLowerCase();
+      let rawName = el.getAttribute('dataName') || el.getAttribute('dataname') || '';
+      try { rawName = decodeURIComponent(rawName); } catch (e) {}
+
+      const objectId = el.getAttribute('objectId') || el.getAttribute('objectid') || '';
+      const id = el.getAttribute('id') || el.getAttribute('dataid') || '';
+
+      const sizeEl = el.querySelector('.dataBody_size_stu, .dataBody_size, .size');
+      const sizeText = sizeEl ? sizeEl.innerText.trim() : '';
+
+      if (type === 'afolder' || type === 'folder') {
+        if (rawName) folders.push({ id, name: rawName });
+      } else if (type && type !== 'tch-courseware' && (rawName || objectId)) {
+        files.push({
+          source: '课程资料库',
+          name: rawName || '未命名文件',
+          objectid: objectId,
+          dataId: id,
+          fileType: '.' + type,
+          sizeText: sizeText,
+          type: type === 'video' ? 'video' : 'document'
+        });
+      }
     });
 
-    window.addEventListener('mousemove', (e) => {
-      if (!isDown) return;
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) element.dataset.isDragging = 'true';
-      let newLeft = Math.max(10, Math.min(window.innerWidth - 60, initialX + dx));
-      let newTop = Math.max(10, Math.min(window.innerHeight - 60, initialY + dy));
-      element.style.left = `${newLeft}px`;
-      element.style.top = `${newTop}px`;
-      element.style.right = 'auto';
-      element.style.bottom = 'auto';
-    });
+    return { folders, files };
+  }
 
-    window.addEventListener('mouseup', () => {
-      if (!isDown) return;
-      isDown = false;
-      element.style.transition = '';
-      setTimeout(() => { element.dataset.isDragging = 'false'; }, 50);
-    });
+  async function startFullCourseTreeScan() {
+    if (isScanningTree) return;
+    const ctx = getCourseContext();
+    if (!ctx.courseid) {
+      showToast('未检测到课程参数，请进入课程“资料”或“章节”页面');
+      return;
+    }
+
+    isScanningTree = true;
+    const scanBtn = document.getElementById('cx-btn-scan-tree');
+    const contentEl = document.getElementById('cx-tree-content');
+    if (scanBtn) scanBtn.disabled = true;
+
+    if (contentEl) {
+      contentEl.innerHTML = `
+        <div class="cx-dl-empty">
+          <svg viewBox="0 0 1024 1024" style="animation: cxRotate 1.5s linear infinite;">
+            <path d="M756.2 304.3C684.2 232.4 586.3 192 481.9 192c-197.6 0-360 144.3-390.6 332.9-1.9 11.5 6.9 21.6 18.5 21.6h63.2c9.5 0 17.5-6.7 19.1-16.1C217.4 374.3 338 274.7 481.9 274.7c81 0 156.4 31.2 212.1 86.8L618.5 437c-15.1 15.1-4.4 41 17 41h208c11 0 20-9 20-20V250c0-21.4-25.9-32.1-41-17l-66.3 71.3z"/>
+          </svg>
+          <div id="cx-tree-scan-status">正在深入探测全课程文件树...</div>
+        </div>
+      `;
+    }
+
+    const visitedFolders = new Set();
+    let totalFilesFound = 0;
+
+    async function walk(folderId, folderName, depth = 0) {
+      if (depth > 6 || visitedFolders.has(folderId)) {
+        return { id: folderId, name: folderName, folders: [], files: [] };
+      }
+      visitedFolders.add(folderId);
+
+      const statusEl = document.getElementById('cx-tree-scan-status');
+      if (statusEl) {
+        statusEl.textContent = `正在扫描：${folderName || '根目录'} (已发现 ${totalFilesFound} 个文件)...`;
+      }
+
+      try {
+        const { folders, files } = await fetchFolderData(ctx.courseid, ctx.clazzid, ctx.cpi, folderId);
+        totalFilesFound += files.length;
+
+        const subTreeNodes = [];
+        for (const sub of folders) {
+          const subNode = await walk(sub.id, sub.name, depth + 1);
+          subTreeNodes.push(subNode);
+        }
+
+        return {
+          id: folderId,
+          name: folderName,
+          folders: subTreeNodes,
+          files: files,
+          isOpen: depth < 2 // 默认展开前两层
+        };
+      } catch (e) {
+        console.warn('Scan folder error:', e);
+        return { id: folderId, name: folderName, folders: [], files: [] };
+      }
+    }
+
+    try {
+      showToast('开始递归扫描全课资料树...');
+      const tree = await walk('', '课程根目录', 0);
+      courseFileTree = tree;
+      showToast(`扫描完成！共发现 ${totalFilesFound} 个课件/资料`);
+      renderCourseTree(tree);
+    } catch (e) {
+      showToast('扫描全课程文件树失败: ' + (e.message || e));
+    } finally {
+      isScanningTree = false;
+      if (scanBtn) scanBtn.disabled = false;
+    }
+  }
+
+  // 递归收集某个文件夹下的所有文件 (用于文件夹一键批量打包)
+  function collectAllFilesFromNode(node, list = []) {
+    if (!node) return list;
+    if (node.files && Array.isArray(node.files)) {
+      list.push(...node.files);
+    }
+    if (node.folders && Array.isArray(node.folders)) {
+      node.folders.forEach(sub => collectAllFilesFromNode(sub, list));
+    }
+    return list;
+  }
+
+  // 渲染文件树 DOM 节点
+  function renderTreeNode(node, container) {
+    if (!node) return;
+
+    // 渲染该节点包含的子文件夹
+    if (node.folders && node.folders.length > 0) {
+      node.folders.forEach(folder => {
+        const totalSubFiles = collectAllFilesFromNode(folder, []).length;
+        const folderDiv = document.createElement('div');
+        folderDiv.className = 'cx-tree-folder';
+
+        const headerDiv = document.createElement('div');
+        headerDiv.className = 'cx-tree-folder-header';
+        headerDiv.innerHTML = `
+          <div class="cx-tree-folder-left">
+            <span class="cx-tree-arrow ${folder.isOpen ? 'expanded' : ''}">▶</span>
+            <span class="cx-tree-folder-icon">📁</span>
+            <span class="cx-tree-folder-title" title="${folder.name}">${folder.name}</span>
+            <span class="cx-tree-folder-badge">${totalSubFiles} 项</span>
+          </div>
+          <div class="cx-tree-folder-actions">
+            ${totalSubFiles > 0 ? `
+              <button class="cx-tree-btn-folder-dl" title="一键下载此文件夹下的所有课件">
+                <svg viewBox="0 0 1024 1024" width="10" height="10" fill="currentColor">
+                  <path d="M505.7 661a8 8 0 0 0 12.6 0l112-141.7c4.1-5.2.4-12.9-6.3-12.9h-74.1V168c0-4.4-3.6-8-8-8h-60c-4.4 0-8 3.6-8 8v338.3H400c-6.7 0-10.4 7.7-6.3 12.9l112 141.8zM878 626h-60c-4.4 0-8 3.6-8 8v154H214V634c0-4.4-3.6-8-8-8h-60c-4.4 0-8 3.6-8 8v198c0 17.7 14.3 32 32 32h684c17.7 0 32-14.3 32-32V634c0-4.4-3.6-8-8-8z"/>
+                </svg>
+                打包下载
+              </button>
+            ` : ''}
+          </div>
+        `;
+
+        const childrenDiv = document.createElement('div');
+        childrenDiv.className = 'cx-tree-children';
+        childrenDiv.style.display = folder.isOpen ? 'block' : 'none';
+
+        // 折叠 / 展开点击事件
+        headerDiv.querySelector('.cx-tree-folder-left').addEventListener('click', (e) => {
+          e.stopPropagation();
+          folder.isOpen = !folder.isOpen;
+          childrenDiv.style.display = folder.isOpen ? 'block' : 'none';
+          const arrow = headerDiv.querySelector('.cx-tree-arrow');
+          if (arrow) {
+            if (folder.isOpen) arrow.classList.add('expanded');
+            else arrow.classList.remove('expanded');
+          }
+        });
+
+        // 文件夹一键批量下载
+        const folderDlBtn = headerDiv.querySelector('.cx-tree-btn-folder-dl');
+        if (folderDlBtn) {
+          folderDlBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const allFiles = collectAllFilesFromNode(folder, []);
+            if (allFiles.length === 0) return;
+            showToast(`正在批量下载 [${folder.name}] 中的 ${allFiles.length} 个文件...`);
+            allFiles.forEach((file, idx) => {
+              setTimeout(() => triggerDownload(file), idx * 1500);
+            });
+          });
+        }
+
+        // 递归渲染子文件夹与子文件
+        renderTreeNode(folder, childrenDiv);
+
+        folderDiv.appendChild(headerDiv);
+        folderDiv.appendChild(childrenDiv);
+        container.appendChild(folderDiv);
+      });
+    }
+
+    // 渲染该节点下的直接文件列表
+    if (node.files && node.files.length > 0) {
+      node.files.forEach(file => {
+        const typeInfo = getFileTypeTag(file);
+        const fileDiv = document.createElement('div');
+        fileDiv.className = 'cx-tree-file';
+        fileDiv.innerHTML = `
+          <div class="cx-tree-file-left">
+            <span class="cx-tree-file-ext ${typeInfo.cls}">${typeInfo.label}</span>
+            <span class="cx-tree-file-name" title="${file.name}">${file.name}</span>
+            <span class="cx-tree-file-size">${file.sizeText || ''}</span>
+          </div>
+          <div class="cx-tree-file-actions">
+            <button class="cx-tree-btn-action cx-primary cx-tree-btn-dl" title="下载原文件">下载</button>
+            <button class="cx-tree-btn-action cx-tree-btn-copy" title="复制直链">直链</button>
+          </div>
+        `;
+
+        fileDiv.querySelector('.cx-tree-btn-dl').addEventListener('click', () => {
+          triggerDownload(file);
+        });
+
+        fileDiv.querySelector('.cx-tree-btn-copy').addEventListener('click', () => {
+          showToast('正在解析直链...');
+          chrome.runtime.sendMessage({
+            type: 'RESOLVE_OBJECT_INFO',
+            objectid: file.objectid
+          }, (res) => {
+            const u = (res && res.data && res.data.download) ? res.data.download : file.url;
+            if (u) copyToClipboard(u);
+            else showToast('无法解析直链');
+          });
+        });
+
+        container.appendChild(fileDiv);
+      });
+    }
+  }
+
+  function renderCourseTree(tree) {
+    const contentEl = document.getElementById('cx-tree-content');
+    if (!contentEl) return;
+    contentEl.innerHTML = '';
+
+    const allFiles = collectAllFilesFromNode(tree, []);
+    if (allFiles.length === 0) {
+      contentEl.innerHTML = `
+        <div class="cx-dl-empty">
+          <svg viewBox="0 0 1024 1024"><path d="M854.6 288.6L639.4 73.4c-15.6-15.6-36.8-24.4-58.8-24.4H240c-44.2 0-80 35.8-80 80v768c0 44.2 35.8 80 80 80h544c44.2 0 80-35.8 80-80V347.4c0-22-8.8-43.2-24.4-58.8z"/></svg>
+          <div>未扫描到课程资料文件</div>
+        </div>
+      `;
+      return;
+    }
+
+    renderTreeNode(tree, contentEl);
   }
 
   function renderFloatingUI(files, folders) {

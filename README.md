@@ -35,6 +35,12 @@
 
 ## ✨ 核心特性
 
+- 🌳 **全课程文件树递归透视（v1.2.0 重磅）**  
+  一键自动递归穿透课程所有主文件夹与多层子目录，以 VS Code 级折叠树展示整门课的所有资料库，支持展开/折叠、查看文件数量与大小、单文件直下以及【打包下载该文件夹】。
+
+- 🧲 **丝滑联动拖拽与四向智能自适应（v1.2.0 重磅）**  
+  采用 60/120fps `requestAnimationFrame` + GPU Compositor 硬件加速，彻底告别生硬位移；悬浮小球与展开面板**双向联动**，面板标题栏同样支持随手拖动，并能根据屏幕象限智能四向自适应避障，永不溢出视口。
+
 - 🔓 **解除下载与打印禁用**  
   智能穿透在线 PDF.js 阅读器与章节播放器，自动恢复被隐藏的下载与打印原生按钮。
 
@@ -44,10 +50,8 @@
 - ⚡ **就地增强注入**  
   访问课程“资料”或“作业”页面时，在每个文件行右侧自动注入醒目的 **【⬇ 下载】** 按钮，无需逐一点击在线预览，点击即可直达下载。
 
-- 🎈 **精致悬浮控制中心**  
-  网课页面右下角常驻悬浮按钮，支持自由拖拽。点击展开卡片即可一览当前页面所有检测到的资料，支持单个高速下载、批量打包及一键复制 CDN 直链。
-
 - 🛡️ **安全跨域与防风控机制**  
+  请求全部由后台服务调度并模拟官方合法 Referer，批量下载内置安全延时队列（1.2 秒节流），避免触发平台并发风控。
   请求全部由后台服务调度并模拟官方合法 Referer，批量下载内置安全延时队列（1.2 秒节流），避免触发平台并发风控。
 
 ---
@@ -61,10 +65,10 @@
 适用于 **Microsoft Edge**、**Google Chrome** 等所有 Chromium 内核浏览器：
 
 > [!TIP]
-> **🚀 最快捷安装入口**：无需 Git 环境，直接前往 👉 **[GitHub Releases 最新发布页](https://github.com/Wxc-creator/chaoxing-downloader/releases/latest)** 下载已打包好的 `chaoxing-downloader-v1.1.3.zip`，解压即用！
+> **🚀 最快捷安装入口**：无需 Git 环境，直接前往 👉 **[GitHub Releases 最新发布页](https://github.com/Wxc-creator/chaoxing-downloader/releases/latest)** 下载已打包好的 `chaoxing-downloader-v1.2.0.zip`，解压即用！
 
 1. **获取扩展程序包（三选一）**：
-   - **🌟 方式 A（最推荐，开箱即用）**：前往 [Releases 最新发布页](https://github.com/Wxc-creator/chaoxing-downloader/releases/latest) 下载 `chaoxing-downloader-v1.1.3.zip`，下载后解压到本地文件夹；
+   - **🌟 方式 A（最推荐，开箱即用）**：前往 [Releases 最新发布页](https://github.com/Wxc-creator/chaoxing-downloader/releases/latest) 下载 `chaoxing-downloader-v1.2.0.zip`，下载后解压到本地文件夹；
    - **方式 B（GitHub 源码 ZIP）**：点击本页面右上角绿色 **`Code`** 按钮，选择 **`Download ZIP`** 并解压；
    - **方式 C（Git 开发者克隆）**：
      ```bash
