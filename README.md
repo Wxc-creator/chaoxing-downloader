@@ -7,6 +7,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/Wxc-creator/chaoxing-downloader?style=social)](https://github.com/Wxc-creator/chaoxing-downloader)
 [![GitHub forks](https://img.shields.io/github/forks/Wxc-creator/chaoxing-downloader?style=social)](https://github.com/Wxc-creator/chaoxing-downloader)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/Wxc-creator/chaoxing-downloader?color=brightgreen&label=Release)](https://github.com/Wxc-creator/chaoxing-downloader/releases/latest)
 [![Chrome](https://img.shields.io/badge/Chrome-Extension-4285F4?logo=googlechrome&logoColor=white)](manifest.json)
 [![Edge](https://img.shields.io/badge/Edge-Addon-0078D7?logo=microsoftedge&logoColor=white)](manifest.json)
 [![Tampermonkey](https://img.shields.io/badge/Tampermonkey-Supported-black?logo=tampermonkey&logoColor=white)](chaoxing-downloader.user.js)
@@ -59,9 +60,13 @@
 
 适用于 **Microsoft Edge**、**Google Chrome** 等所有 Chromium 内核浏览器：
 
-1. **下载本项目源码**：
-   - 点击本页面右上角的绿色 **`Code`** 按钮，选择 **`Download ZIP`**，下载后解压到本地文件夹；
-   - 或通过 Git 命令克隆到本地：
+> [!TIP]
+> **🚀 最快捷安装入口**：无需 Git 环境，直接前往 👉 **[GitHub Releases 最新发布页](https://github.com/Wxc-creator/chaoxing-downloader/releases/latest)** 下载已打包好的 `chaoxing-downloader-v1.1.3.zip`，解压即用！
+
+1. **获取扩展程序包（三选一）**：
+   - **🌟 方式 A（最推荐，开箱即用）**：前往 [Releases 最新发布页](https://github.com/Wxc-creator/chaoxing-downloader/releases/latest) 下载 `chaoxing-downloader-v1.1.3.zip`，下载后解压到本地文件夹；
+   - **方式 B（GitHub 源码 ZIP）**：点击本页面右上角绿色 **`Code`** 按钮，选择 **`Download ZIP`** 并解压；
+   - **方式 C（Git 开发者克隆）**：
      ```bash
      git clone https://github.com/Wxc-creator/chaoxing-downloader.git
      ```
