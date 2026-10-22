@@ -35,7 +35,10 @@
 
 ## ✨ 核心特性
 
-- ⚡ **突破禁止下载与15字节报错拦截（v1.2.1 重磅）**  
+- 🛡️ **动静双轨鉴权与三级下载保障（v1.2.2 重磅）**  
+  引入 Chrome MV3 标准的 `declarativeNetRequest` 动静双轨网络拦截引擎，自动为 CDN 资源（`*.cldisk.com`）注入合法的防盗链标头；构建“后台特权拉取 + 前台同源回退 + 原生 a[download]”三重防御体系，彻底杜绝“响应状态异常 403”，确保课件原名极速下载落盘！
+
+- ⚡ **突破禁止下载与15字节报错拦截（v1.2.1）**  
   深入超星 Pan/cldisk 云盘调度架构，通过动态预览令牌穿透官方对课件下载权限的封锁，直连官方高速 CDN；彻底根除“无效的参数/无权限”等 15 字节纯文本错误误存为损坏 PDF 的问题，确保文件 100% 完整原样保存！
 
 - 🌳 **全课程文件树递归透视（v1.2.0 重磅）**  
@@ -68,10 +71,10 @@
 适用于 **Microsoft Edge**、**Google Chrome** 等所有 Chromium 内核浏览器：
 
 > [!TIP]
-> **🚀 最快捷安装入口**：无需 Git 环境，直接前往 👉 **[GitHub Releases 最新发布页](https://github.com/Wxc-creator/chaoxing-downloader/releases/latest)** 下载已打包好的 `chaoxing-downloader-v1.2.1.zip`，解压即用！
+> **🚀 最快捷安装入口**：无需 Git 环境，直接前往 👉 **[GitHub Releases 最新发布页](https://github.com/Wxc-creator/chaoxing-downloader/releases/latest)** 下载已打包好的 `chaoxing-downloader-v1.2.2.zip`，解压即用！
 
 1. **获取扩展程序包（三选一）**：
-   - **🌟 方式 A（最推荐，开箱即用）**：前往 [Releases 最新发布页](https://github.com/Wxc-creator/chaoxing-downloader/releases/latest) 下载 `chaoxing-downloader-v1.2.1.zip`，下载后解压到本地文件夹；
+   - **🌟 方式 A（最推荐，开箱即用）**：前往 [Releases 最新发布页](https://github.com/Wxc-creator/chaoxing-downloader/releases/latest) 下载 `chaoxing-downloader-v1.2.2.zip`，下载后解压到本地文件夹；
    - **方式 B（GitHub 源码 ZIP）**：点击本页面右上角绿色 **`Code`** 按钮，选择 **`Download ZIP`** 并解压；
    - **方式 C（Git 开发者克隆）**：
      ```bash

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "超星学习通课件与资料下载助手",
   "short_name": "超星下载助手",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "一键提取并下载超星学习通/泛雅平台的课件(PPT/PDF/Word/Excel)、课程资料、音视频及作业附件，解除教师禁止下载限制与预览隐藏。",
   "icons": {
     "16": "icons/icon16.png",
@@ -22,7 +22,8 @@
     "downloads",
     "storage",
     "activeTab",
-    "scripting"
+    "scripting",
+    "declarativeNetRequest"
   ],
   "host_permissions": [
     "*://*.chaoxing.com/*",
@@ -31,6 +32,15 @@
     "*://*.cldisk.com/*",
     "*://*.edu.cn/*"
   ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "ruleset_1",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  },
   "background": {
     "service_worker": "background.js"
   },

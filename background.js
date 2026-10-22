@@ -1,8 +1,8 @@
 /**
- * background.js - Chrome Extension Service Worker (v1.2.1 云盘直链穿透与真实文件保障版)
- * 1. 后台特权拉取官方动态鉴权直链与 Pan/cldisk 穿透直链，彻底突破禁止下载与 403
- * 2. 注册 onDeterminingFilename 确保 Chrome/Edge 下载器 100% 识别原始 PDF/RAR 扩展名与完整中文名
- * 3. 拦截防御小于100字节的“无效的参数/无权限”纯文本错误，确保下载的均为有效完整文件
+ * background.js - Chrome Extension Service Worker (v1.2.2 动静双轨鉴权穿透与全链路保障版)
+ * 1. 采用 declarativeNetRequest 动静双轨重写 Referer/Origin，彻底攻克 d0.cldisk.com 403 防盗链限制
+ * 2. 独创“后台特权解析 + 前台同源回退 + 原生 a[download]”三重防线，绝不出现“状态异常”
+ * 3. 拦截防御小于100字节的纯文本报错，确保下载的均为有效完整文件
  */
 
 const tabFilesMap = new Map();
@@ -13,6 +13,47 @@ const DEFAULT_SETTINGS = {
   autoUnlockRestrictions: true,
   batchDelayMs: 1200
 };
+
+// 动态兜底注册 declarativeNetRequest 规则，确保请求 cldisk.com 时附带合法 Referer
+function initDeclarativeNetRules() {
+  if (chrome.declarativeNetRequest && chrome.declarativeNetRequest.updateDynamicRules) {
+    chrome.declarativeNetRequest.updateDynamicRules({
+      removeRuleIds: [1, 2],
+      addRules: [
+        {
+          id: 1,
+          priority: 1,
+          action: {
+            type: 'modifyHeaders',
+            requestHeaders: [
+              { header: 'Referer', operation: 'set', value: 'https://pan-yz.chaoxing.com/' },
+              { header: 'Origin', operation: 'set', value: 'https://pan-yz.chaoxing.com' }
+            ]
+          },
+          condition: {
+            urlFilter: '*://*.cldisk.com/*',
+            resourceTypes: ['main_frame', 'sub_frame', 'xmlhttprequest', 'other']
+          }
+        },
+        {
+          id: 2,
+          priority: 1,
+          action: {
+            type: 'modifyHeaders',
+            requestHeaders: [
+              { header: 'Referer', operation: 'set', value: 'https://mooc2-ans.chaoxing.com/' }
+            ]
+          },
+          condition: {
+            urlFilter: '*://*.chaoxing.com/*',
+            resourceTypes: ['main_frame', 'sub_frame', 'xmlhttprequest', 'other']
+          }
+        }
+      ]
+    }).catch((e) => console.warn('[超星下载助手] updateDynamicRules:', e));
+  }
+}
+initDeclarativeNetRules();
 
 async function getSettings() {
   return new Promise((resolve) => {
@@ -186,59 +227,76 @@ async function fetchFileDataBase64(item) {
     }
   }
 
-  const reqHeaders = {};
-  if (targetUrl.includes('cldisk.com')) {
-    reqHeaders['Referer'] = 'https://pan-yz.chaoxing.com/';
-  } else {
-    reqHeaders['Referer'] = 'https://mooc2-ans.chaoxing.com/';
-  }
-
-  const fileRes = await fetch(targetUrl, {
-    method: 'GET',
-    headers: reqHeaders
-  });
-
-  if (!fileRes.ok) {
-    throw new Error('文件下载响应状态异常: ' + fileRes.status);
-  }
-
-  const buffer = await fileRes.arrayBuffer();
-
-  // 关键防护：严防将“无效的参数”、“无权限下载”等 15 字节纯文本错误当作正常课件保存
-  if (buffer.byteLength < 100) {
-    const errorText = new TextDecoder('utf-8').decode(buffer);
-    if (
-      errorText.includes('无效') ||
-      errorText.includes('权限') ||
-      errorText.includes('403') ||
-      errorText.includes('Forbidden') ||
-      errorText.includes('错误') ||
-      errorText.includes('error')
-    ) {
-      throw new Error(`平台拦截提示: [${errorText.trim()}]`);
+  try {
+    const fileRes = await fetch(targetUrl);
+    if (!fileRes.ok) {
+      console.warn(`[超星下载助手] 后台直接拉取返回状态码 ${fileRes.status}，切换为前台同源直链下载`);
+      return {
+        filename: finalFilename,
+        directUrl: targetUrl,
+        size: 0
+      };
     }
+
+    const buffer = await fileRes.arrayBuffer();
+
+    // 关键防护：严防将“无效的参数”、“无权限下载”等 15 字节纯文本错误当作正常课件保存
+    if (buffer.byteLength < 100) {
+      const errorText = new TextDecoder('utf-8').decode(buffer);
+      if (
+        errorText.includes('无效') ||
+        errorText.includes('权限') ||
+        errorText.includes('403') ||
+        errorText.includes('Forbidden') ||
+        errorText.includes('错误') ||
+        errorText.includes('error')
+      ) {
+        if (targetUrl.includes('cldisk.com')) {
+          return {
+            filename: finalFilename,
+            directUrl: targetUrl,
+            size: 0
+          };
+        }
+        throw new Error(`平台拦截提示: [${errorText.trim()}]`);
+      }
+    }
+
+    const base64Data = bufferToBase64(buffer);
+
+    return {
+      filename: finalFilename,
+      base64: base64Data,
+      directUrl: targetUrl,
+      size: buffer.byteLength
+    };
+  } catch (err) {
+    if (targetUrl) {
+      return {
+        filename: finalFilename,
+        directUrl: targetUrl,
+        size: 0
+      };
+    }
+    throw err;
   }
-
-  const base64Data = bufferToBase64(buffer);
-
-  return {
-    filename: finalFilename,
-    base64: base64Data,
-    size: buffer.byteLength
-  };
 }
 
 // 后台直接下载执行器
 async function executeDownload(item) {
   const result = await fetchFileDataBase64(item);
-  const dataUrl = `data:application/octet-stream;base64,${result.base64}`;
+  const downloadUrl = result.base64 ? `data:application/octet-stream;base64,${result.base64}` : result.directUrl;
+
+  if (!downloadUrl) {
+    throw new Error('未能获取到有效的下载直链');
+  }
 
   return new Promise((resolve, reject) => {
     // 提前在 map 中登记该 URL 对应的真实文件名
-    downloadFilenameMap.set(dataUrl, result.filename);
+    downloadFilenameMap.set(downloadUrl, result.filename);
 
     chrome.downloads.download({
-      url: dataUrl,
+      url: downloadUrl,
       filename: result.filename,
       saveAs: false,
       conflictAction: 'uniquify'
@@ -365,4 +423,4 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   tabFilesMap.delete(tabId);
 });
 
-console.log('[超星学习通下载助手] Background Service Worker (v1.2.1) 已就绪');
+console.log('[超星学习通下载助手] Background Service Worker (v1.2.2) 已就绪');

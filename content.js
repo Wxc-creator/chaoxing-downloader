@@ -1,5 +1,5 @@
 /**
- * content.js - 超星学习通课件与资料下载助手 (v1.2.1 资料库穿透与全景文件树版)
+ * content.js - 超星学习通课件与资料下载助手 (v1.2.2 动静双轨鉴权与三级下载保障版)
  * 采用“后台特权拉取数据 + 前台标准 HTML5 a[download] 本地落盘”双引擎机制
  * 彻底杜绝“下载 (2)”无后缀名及15字节“无效的参数”问题，100% 精确保存为 .pdf / .rar / .png 原名原格式
  */
@@ -122,8 +122,12 @@
     }
     const mime = getMimeType(filename);
     const blob = new Blob([byteNumbers], { type: mime });
-    const blobUrl = URL.createObjectURL(blob);
+    saveBlobAsFile(blob, filename);
+  }
 
+  // 将 Blob 保存为本地文件并用 HTML5 a[download] 锁定文件名
+  function saveBlobAsFile(blob, filename) {
+    const blobUrl = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = blobUrl;
     a.download = filename; // 浏览器下载器严格采用此名称与扩展名
@@ -131,6 +135,17 @@
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(blobUrl), 20000);
+  }
+
+  // 页面原生 a[download] 点击触发下载（携带页面原生合法的 Referer）
+  function downloadViaAnchor(url, filename) {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename || '超星课件.pdf';
+    a.target = '_blank';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   }
 
   // ================= 核心下载触发器 =================
@@ -164,24 +179,46 @@
       chrome.runtime.sendMessage({
         type: 'FETCH_FILE_DATA',
         item: itemToSend
-      }, (res) => {
-        if (res && res.success && res.base64) {
-          saveBase64AsFile(res.base64, res.filename || itemToSend.name);
-          showToast(`下载完成: ${res.filename || itemToSend.name}`);
-        } else {
-          // 降级使用 background download
-          chrome.runtime.sendMessage({
-            type: 'DOWNLOAD_SINGLE',
-            item: itemToSend
-          }, (downRes) => {
-            if (downRes && downRes.success) {
-              showToast(`已开始下载: ${itemToSend.name}`);
-            } else {
-              const errMsg = (res && res.error) || (downRes && downRes.error) || '网络异常';
-              showToast(`下载失败: ${errMsg}`);
+      }, async (res) => {
+        if (res && res.success) {
+          if (res.base64) {
+            saveBase64AsFile(res.base64, res.filename || itemToSend.name);
+            showToast(`下载完成: ${res.filename || itemToSend.name}`);
+            return;
+          }
+          if (res.directUrl) {
+            try {
+              // 页面同源环境自带合法的 mooc2-ans Referer，且 cldisk.com 支持 CORS
+              const fileResp = await fetch(res.directUrl);
+              if (fileResp.ok) {
+                const blob = await fileResp.blob();
+                if (blob.size >= 100) {
+                  saveBlobAsFile(blob, res.filename || itemToSend.name);
+                  showToast(`下载完成: ${res.filename || itemToSend.name}`);
+                  return;
+                }
+              }
+            } catch (e) {
+              console.warn('Frontend direct fetch failed, fallback to native anchor click', e);
             }
-          });
+            downloadViaAnchor(res.directUrl, res.filename || itemToSend.name);
+            showToast(`已开始下载: ${res.filename || itemToSend.name}`);
+            return;
+          }
         }
+
+        // 降级使用 background download
+        chrome.runtime.sendMessage({
+          type: 'DOWNLOAD_SINGLE',
+          item: itemToSend
+        }, (downRes) => {
+          if (downRes && downRes.success) {
+            showToast(`已开始下载: ${itemToSend.name}`);
+          } else {
+            const errMsg = (res && res.error) || (downRes && downRes.error) || '网络异常';
+            showToast(`下载失败: ${errMsg}`);
+          }
+        });
       });
     } catch (e) {
       showToast('扩展连接断开，请刷新页面后重试');

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         超星学习通课件与资料下载助手 (Tampermonkey版)
 // @namespace    https://github.com/Wxc-creator/chaoxing-downloader
-// @version      1.2.1
+// @version      1.2.2
 // @description  一键提取并下载超星学习通/泛雅平台的课件(PPT/PDF/Word/Excel)、课程资料、音视频及作业附件，解除教师禁止下载限制与预览隐藏，支持全课程文件树递归透视与极速下载。
 // @author       Wxc-creator
 // @match        *://*.chaoxing.com/*

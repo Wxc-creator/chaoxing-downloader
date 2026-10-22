@@ -1,0 +1,43 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "requestHeaders": [
+        {
+          "header": "Referer",
+          "operation": "set",
+          "value": "https://pan-yz.chaoxing.com/"
+        },
+        {
+          "header": "Origin",
+          "operation": "set",
+          "value": "https://pan-yz.chaoxing.com"
+        }
+      ]
+    },
+    "condition": {
+      "urlFilter": "*://*.cldisk.com/*",
+      "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "other"]
+    }
+  },
+  {
+    "id": 2,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "requestHeaders": [
+        {
+          "header": "Referer",
+          "operation": "set",
+          "value": "https://mooc2-ans.chaoxing.com/"
+        }
+      ]
+    },
+    "condition": {
+      "urlFilter": "*://*.chaoxing.com/*",
+      "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "other"]
+    }
+  }
+]
