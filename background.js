@@ -1,7 +1,8 @@
 /**
- * background.js - Chrome Extension Service Worker (v1.1.3 文件名与格式完美保障版)
- * 1. 后台特权拉取官方动态鉴权直链数据，彻底解决跨域与 403
+ * background.js - Chrome Extension Service Worker (v1.2.1 云盘直链穿透与真实文件保障版)
+ * 1. 后台特权拉取官方动态鉴权直链与 Pan/cldisk 穿透直链，彻底突破禁止下载与 403
  * 2. 注册 onDeterminingFilename 确保 Chrome/Edge 下载器 100% 识别原始 PDF/RAR 扩展名与完整中文名
+ * 3. 拦截防御小于100字节的“无效的参数/无权限”纯文本错误，确保下载的均为有效完整文件
  */
 
 const tabFilesMap = new Map();
@@ -54,6 +55,7 @@ chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
 
 // 异步解析 objectid 获取官方带有动态鉴权签名的真实高速直链与文件名
 async function fetchObjectStatus(objectid) {
+  if (!objectid) return null;
   const hosts = [
     'https://mooc2-ans.chaoxing.com',
     'https://mooc1.chaoxing.com',
@@ -80,12 +82,78 @@ async function fetchObjectStatus(objectid) {
   return null;
 }
 
+// 核心突破：解析超星泛雅/学习通课程资料库(Pan/cldisk)动态预览直链，彻底突破禁止下载与权限校验
+async function resolveCourseDataDownloadUrl(item) {
+  let previewUrl = item.previewUrl;
+
+  // 1. 如果没有 previewUrl 且有 dataId，请求 get-preview-url
+  if (!previewUrl && item.dataId) {
+    const courseid = item.courseid || '';
+    const clazzid = item.clazzid || '';
+    const cpi = item.cpi || '';
+    const endpoint = `https://mooc2-ans.chaoxing.com/mooc2-ans/coursedata/get-preview-url?dataId=${item.dataId}&cpi=${cpi}&clazzid=${clazzid}&ut=s&courseid=${courseid}`;
+    try {
+      const resp = await fetch(endpoint, {
+        method: 'GET',
+        headers: {
+          'Referer': 'https://mooc2-ans.chaoxing.com/'
+        },
+        credentials: 'include'
+      });
+      if (resp.ok) {
+        const json = await resp.json();
+        if (json && json.status && json.url) {
+          previewUrl = json.url;
+        }
+      }
+    } catch (e) {
+      console.warn('[超星下载助手] fetch get-preview-url failed:', e);
+    }
+  }
+
+  // 2. 如果成功拿到 previewUrl (pan-yz.chaoxing.com/screen/v2/file_...)
+  if (previewUrl) {
+    try {
+      const screenResp = await fetch(previewUrl, {
+        method: 'GET',
+        headers: {
+          'Referer': 'https://mooc2-ans.chaoxing.com/'
+        }
+      });
+      if (screenResp.ok) {
+        const screenHtml = await screenResp.text();
+        const match = screenHtml.match(/https?:\/\/d0\.cldisk\.com\/download\/[a-zA-Z0-9]+[^\s"']+/i);
+        if (match) {
+          return match[0].replace(/&amp;/g, '&');
+        }
+      }
+    } catch (e) {
+      console.warn('[超星下载助手] fetch preview screen failed:', e);
+    }
+  }
+
+  return null;
+}
+
 // 拉取文件并获取 Base64 数据（供前台直接生成 Blob 保证 100% 正确扩展名）
 async function fetchFileDataBase64(item) {
   let targetUrl = item.url;
   let finalFilename = item.name;
 
-  if (item.objectid) {
+  // 1. 优先尝试云盘资料穿透直链解析 (针对课程资料库、禁止下载的课件等)
+  if (item.dataId || item.previewUrl) {
+    try {
+      const cldiskUrl = await resolveCourseDataDownloadUrl(item);
+      if (cldiskUrl) {
+        targetUrl = cldiskUrl;
+      }
+    } catch (e) {
+      console.warn('[超星下载助手] resolveCourseDataDownloadUrl error:', e);
+    }
+  }
+
+  // 2. 若未解析到，尝试传统章节 ananas/status 动态直链
+  if (!targetUrl && item.objectid) {
     const statusData = await fetchObjectStatus(item.objectid);
     if (statusData) {
       targetUrl = statusData.download || statusData.httphd || statusData.http || statusData.pdf;
@@ -95,8 +163,12 @@ async function fetchFileDataBase64(item) {
     }
   }
 
+  // 3. 降级使用传统 coursedata 下载接口
   if (!targetUrl && item.dataId) {
-    targetUrl = `https://mooc1.chaoxing.com/coursedata/downloadData?dataId=${item.dataId}&ut=s`;
+    const cid = item.courseid ? `&courseId=${item.courseid}` : '';
+    const clid = item.clazzid ? `&classId=${item.clazzid}` : '';
+    const cpi = item.cpi ? `&cpi=${item.cpi}` : '';
+    targetUrl = `https://mooc1.chaoxing.com/coursedata/downloadData?dataId=${item.dataId}&ut=s${cid}${clid}${cpi}`;
   }
 
   if (!targetUrl) {
@@ -114,11 +186,16 @@ async function fetchFileDataBase64(item) {
     }
   }
 
+  const reqHeaders = {};
+  if (targetUrl.includes('cldisk.com')) {
+    reqHeaders['Referer'] = 'https://pan-yz.chaoxing.com/';
+  } else {
+    reqHeaders['Referer'] = 'https://mooc2-ans.chaoxing.com/';
+  }
+
   const fileRes = await fetch(targetUrl, {
     method: 'GET',
-    headers: {
-      'Referer': 'https://mooc2-ans.chaoxing.com/'
-    }
+    headers: reqHeaders
   });
 
   if (!fileRes.ok) {
@@ -126,6 +203,22 @@ async function fetchFileDataBase64(item) {
   }
 
   const buffer = await fileRes.arrayBuffer();
+
+  // 关键防护：严防将“无效的参数”、“无权限下载”等 15 字节纯文本错误当作正常课件保存
+  if (buffer.byteLength < 100) {
+    const errorText = new TextDecoder('utf-8').decode(buffer);
+    if (
+      errorText.includes('无效') ||
+      errorText.includes('权限') ||
+      errorText.includes('403') ||
+      errorText.includes('Forbidden') ||
+      errorText.includes('错误') ||
+      errorText.includes('error')
+    ) {
+      throw new Error(`平台拦截提示: [${errorText.trim()}]`);
+    }
+  }
+
   const base64Data = bufferToBase64(buffer);
 
   return {
@@ -231,8 +324,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case 'RESOLVE_OBJECT_INFO': {
-      fetchObjectStatus(message.objectid)
-        .then((data) => sendResponse({ success: true, data }))
+      (async () => {
+        let dlUrl = null;
+        let filename = message.item ? message.item.name : '';
+        if (message.item) {
+          dlUrl = await resolveCourseDataDownloadUrl(message.item);
+        }
+        if (!dlUrl && message.objectid) {
+          const data = await fetchObjectStatus(message.objectid);
+          if (data) {
+            dlUrl = data.download || data.httphd || data.http || data.pdf;
+            filename = data.filename || filename;
+          }
+        }
+        if (dlUrl) {
+          return { download: dlUrl, filename: filename };
+        }
+        return null;
+      })()
+        .then((data) => sendResponse({ success: !!data, data }))
         .catch((err) => sendResponse({ success: false, error: err.message }));
       return true;
     }
@@ -255,4 +365,4 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   tabFilesMap.delete(tabId);
 });
 
-console.log('[超星学习通下载助手] Background Service Worker (v1.1.3) 已就绪');
+console.log('[超星学习通下载助手] Background Service Worker (v1.2.1) 已就绪');

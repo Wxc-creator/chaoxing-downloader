@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         超星学习通课件与资料下载助手 (Tampermonkey版)
 // @namespace    https://github.com/Wxc-creator/chaoxing-downloader
-// @version      1.2.0
+// @version      1.2.1
 // @description  一键提取并下载超星学习通/泛雅平台的课件(PPT/PDF/Word/Excel)、课程资料、音视频及作业附件，解除教师禁止下载限制与预览隐藏，支持全课程文件树递归透视与极速下载。
 // @author       Wxc-creator
 // @match        *://*.chaoxing.com/*
@@ -315,15 +315,27 @@
   }
 
   function getCourseContext() {
+    let courseid = '', clazzid = '', cpi = '';
+
+    try {
+      const cIdEl = document.getElementById('courseId') || document.getElementById('courseid') || document.querySelector('input[name="courseId"]');
+      if (cIdEl && cIdEl.value) courseid = cIdEl.value;
+
+      const clIdEl = document.getElementById('classId') || document.getElementById('clazzid') || document.querySelector('input[name="classId"]');
+      if (clIdEl && clIdEl.value) clazzid = clIdEl.value;
+
+      const cpiEl = document.getElementById('cpi') || document.querySelector('input[name="cpi"]');
+      if (cpiEl && cpiEl.value) cpi = cpiEl.value;
+    } catch (e) {}
+
     const urls = [location.href, document.referrer || ''];
     try { if (window.top && window.top.location.href) urls.push(window.top.location.href); } catch (e) {}
-    let courseid = '', clazzid = '', cpi = '';
     for (const u of urls) {
       if (!u) continue;
       try {
         const parsed = new URL(u, location.origin);
         if (!courseid) courseid = parsed.searchParams.get('courseid') || parsed.searchParams.get('courseId') || '';
-        if (!clazzid) clazzid = parsed.searchParams.get('clazzid') || parsed.searchParams.get('clazzId') || '';
+        if (!clazzid) clazzid = parsed.searchParams.get('clazzid') || parsed.searchParams.get('clazzId') || parsed.searchParams.get('classId') || '';
         if (!cpi) cpi = parsed.searchParams.get('cpi') || '';
       } catch (e) {}
     }
@@ -473,8 +485,40 @@
     }
   }
 
-  // 获取官方鉴权直链
+  // 获取官方鉴权直链与穿透解析
   async function resolveOfficialDownloadInfo(item) {
+    const ctx = getCourseContext();
+    const courseid = item.courseid || ctx.courseid;
+    const clazzid = item.clazzid || ctx.clazzid;
+    const cpi = item.cpi || ctx.cpi;
+
+    // 1. 优先尝试课程资料库 (Pan/cldisk) 穿透直链解析
+    if (item.dataId) {
+      try {
+        const endpoint = `https://mooc2-ans.chaoxing.com/mooc2-ans/coursedata/get-preview-url?dataId=${item.dataId}&cpi=${cpi}&clazzid=${clazzid}&ut=s&courseid=${courseid}`;
+        const pResp = await fetch(endpoint, { credentials: 'include' });
+        if (pResp.ok) {
+          const pData = await pResp.json();
+          if (pData && pData.status && pData.url) {
+            const screenResp = await fetch(pData.url, { headers: { 'Referer': 'https://mooc2-ans.chaoxing.com/' } });
+            if (screenResp.ok) {
+              const screenHtml = await screenResp.text();
+              const m = screenHtml.match(/https?:\/\/d0\.cldisk\.com\/download\/[a-zA-Z0-9]+[^\s"']+/i);
+              if (m) {
+                return {
+                  url: m[0].replace(/&amp;/g, '&'),
+                  filename: item.name
+                };
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[油猴] resolve pan-yz cldisk url failed:', e);
+      }
+    }
+
+    // 2. 章节课件 ananas/status
     if (item.objectid) {
       const hosts = ['https://mooc2-ans.chaoxing.com', 'https://mooc1.chaoxing.com'];
       for (const h of hosts) {
@@ -510,23 +554,48 @@
 
       showToast(`正在下载: ${filename}`);
 
+      function proceedBlob(blob) {
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
+        showToast(`下载完成: ${filename}`);
+      }
+
+      const reqHeaders = {};
+      if (targetUrl.includes('cldisk.com')) {
+        reqHeaders['Referer'] = 'https://pan-yz.chaoxing.com/';
+      } else {
+        reqHeaders['Referer'] = 'https://mooc2-ans.chaoxing.com/';
+      }
+
       if (typeof GM_xmlhttpRequest === 'function') {
         GM_xmlhttpRequest({
           method: 'GET',
           url: targetUrl,
           responseType: 'blob',
-          headers: { 'Referer': 'https://mooc2-ans.chaoxing.com/' },
+          headers: reqHeaders,
           onload: function (resp) {
             if (resp.status === 200) {
-              const blobUrl = URL.createObjectURL(resp.response);
-              const a = document.createElement('a');
-              a.href = blobUrl;
-              a.download = filename;
-              document.body.appendChild(a);
-              a.click();
-              a.remove();
-              setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
-              showToast(`下载完成: ${filename}`);
+              const blob = resp.response;
+              if (blob && blob.size < 100) {
+                const reader = new FileReader();
+                reader.onload = function () {
+                  const text = reader.result || '';
+                  if (text.includes('无效') || text.includes('权限') || text.includes('403') || text.includes('Forbidden') || text.includes('错误')) {
+                    showToast(`平台拦截提示: [${text.trim()}]`);
+                    return;
+                  }
+                  proceedBlob(blob);
+                };
+                reader.readAsText(blob);
+                return;
+              }
+              proceedBlob(blob);
             } else {
               showToast(`下载失败: 状态码 ${resp.status}`);
             }
@@ -563,9 +632,13 @@
           discoveredFolders.push({ name: rawName, id: dataId });
         }
       } else if (type && type !== 'tch-courseware' && (rawName || objectId)) {
+        const ctx = getCourseContext();
         const fileItem = {
           objectid: objectId,
           dataId: dataId,
+          courseid: ctx.courseid,
+          clazzid: ctx.clazzid,
+          cpi: ctx.cpi,
           name: rawName,
           type: type
         };
@@ -667,6 +740,9 @@
           name: rawName || '未命名文件',
           objectid: objectId,
           dataId: id,
+          courseid: courseid,
+          clazzid: clazzid,
+          cpi: cpi,
           fileType: '.' + type,
           sizeText: sizeText
         });

@@ -1,7 +1,7 @@
 /**
- * content.js - 超星学习通课件与资料下载助手 (v1.1.3 终极文件名保障版)
+ * content.js - 超星学习通课件与资料下载助手 (v1.2.1 资料库穿透与全景文件树版)
  * 采用“后台特权拉取数据 + 前台标准 HTML5 a[download] 本地落盘”双引擎机制
- * 彻底杜绝“下载 (2)”无后缀名问题，100% 精确保存为 .pdf / .rar / .png 原名原格式
+ * 彻底杜绝“下载 (2)”无后缀名及15字节“无效的参数”问题，100% 精确保存为 .pdf / .rar / .png 原名原格式
  */
 
 (function () {
@@ -135,26 +135,50 @@
 
   // ================= 核心下载触发器 =================
 
-  function triggerDownload(fileItem) {
+  async function triggerDownload(fileItem) {
     showToast(`正在高速下载: ${fileItem.name || '课件'}...`);
+    const ctx = getCourseContext();
+    const itemToSend = Object.assign({}, fileItem, {
+      courseid: fileItem.courseid || ctx.courseid,
+      clazzid: fileItem.clazzid || ctx.clazzid,
+      cpi: fileItem.cpi || ctx.cpi
+    });
+
+    // 如果是资料库课件且有 dataId，前台同源尝试预取 previewUrl，双保险
+    if (itemToSend.dataId && !itemToSend.previewUrl && itemToSend.courseid && itemToSend.clazzid) {
+      try {
+        const pUrl = `/mooc2-ans/coursedata/get-preview-url?dataId=${itemToSend.dataId}&cpi=${itemToSend.cpi || ''}&clazzid=${itemToSend.clazzid}&ut=s&courseid=${itemToSend.courseid}`;
+        const pResp = await fetch(pUrl, { credentials: 'include' });
+        if (pResp.ok) {
+          const pData = await pResp.json();
+          if (pData && pData.status && pData.url) {
+            itemToSend.previewUrl = pData.url;
+          }
+        }
+      } catch (e) {
+        console.warn('Pre-fetching preview url in content failed, background will resolve it', e);
+      }
+    }
+
     try {
       chrome.runtime.sendMessage({
         type: 'FETCH_FILE_DATA',
-        item: fileItem
+        item: itemToSend
       }, (res) => {
         if (res && res.success && res.base64) {
-          saveBase64AsFile(res.base64, res.filename || fileItem.name);
-          showToast(`下载完成: ${res.filename || fileItem.name}`);
+          saveBase64AsFile(res.base64, res.filename || itemToSend.name);
+          showToast(`下载完成: ${res.filename || itemToSend.name}`);
         } else {
           // 降级使用 background download
           chrome.runtime.sendMessage({
             type: 'DOWNLOAD_SINGLE',
-            item: fileItem
+            item: itemToSend
           }, (downRes) => {
             if (downRes && downRes.success) {
-              showToast(`已开始下载: ${fileItem.name}`);
+              showToast(`已开始下载: ${itemToSend.name}`);
             } else {
-              showToast(`下载失败: ${res ? res.error : '网络异常'}`);
+              const errMsg = (res && res.error) || (downRes && downRes.error) || '网络异常';
+              showToast(`下载失败: ${errMsg}`);
             }
           });
         }
@@ -231,11 +255,15 @@
           discoveredFoldersList.push({ name: rawName, id: dataId, type: 'folder' });
         }
       } else if (type && type !== 'tch-courseware' && (rawName || objectId)) {
+        const ctx = getCourseContext();
         const fileItem = {
           source: '课程资料库',
           name: rawName || '课程资料',
           objectid: objectId,
           dataId: dataId,
+          courseid: ctx.courseid,
+          clazzid: ctx.clazzid,
+          cpi: ctx.cpi,
           fileType: '.' + type,
           sizeText: sizeText,
           type: type === 'video' ? 'video' : 'document'
@@ -428,28 +456,43 @@
 
   // 获取当前课程上下文参数 (courseid, clazzid, cpi, enc)
   function getCourseContext() {
+    let courseid = '', clazzid = '', cpi = '', enc = '';
+
+    // 1. 优先从超星标准 DOM 隐藏域获取（最稳定准确）
+    try {
+      const cIdEl = document.getElementById('courseId') || document.getElementById('courseid') || document.querySelector('input[name="courseId"]');
+      if (cIdEl && cIdEl.value) courseid = cIdEl.value;
+
+      const clIdEl = document.getElementById('classId') || document.getElementById('clazzid') || document.querySelector('input[name="classId"]');
+      if (clIdEl && clIdEl.value) clazzid = clIdEl.value;
+
+      const cpiEl = document.getElementById('cpi') || document.querySelector('input[name="cpi"]');
+      if (cpiEl && cpiEl.value) cpi = cpiEl.value;
+    } catch (e) {}
+
+    // 2. 从当前 URL / 父级 iframe / Referrer 中解析
     const urlsToSearch = [location.href, document.referrer || ''];
     try {
       if (window.top && window.top.location.href) urlsToSearch.push(window.top.location.href);
     } catch (e) {}
 
-    let courseid = '', clazzid = '', cpi = '', enc = '';
     for (const u of urlsToSearch) {
       if (!u) continue;
       try {
         const parsed = new URL(u, location.origin);
         if (!courseid) courseid = parsed.searchParams.get('courseid') || parsed.searchParams.get('courseId') || '';
-        if (!clazzid) clazzid = parsed.searchParams.get('clazzid') || parsed.searchParams.get('clazzId') || '';
+        if (!clazzid) clazzid = parsed.searchParams.get('clazzid') || parsed.searchParams.get('clazzId') || parsed.searchParams.get('classId') || '';
         if (!cpi) cpi = parsed.searchParams.get('cpi') || '';
         if (!enc) enc = parsed.searchParams.get('enc') || '';
       } catch (e) {}
     }
 
-    if (!courseid) {
+    // 3. 从 Cookie 中提取兜底 (如 266674469cpi=406496632)
+    if (!courseid || !cpi) {
       const m = document.cookie.match(/(\d{6,12})cpi=(\d+)/);
       if (m) {
-        courseid = m[1];
-        cpi = m[2];
+        if (!courseid) courseid = m[1];
+        if (!cpi) cpi = m[2];
       }
     }
     return { courseid, clazzid, cpi, enc };
@@ -936,9 +979,10 @@
         showToast('正在解析直链...');
         chrome.runtime.sendMessage({
           type: 'RESOLVE_OBJECT_INFO',
-          objectid: file.objectid
+          objectid: file.objectid,
+          item: file
         }, (res) => {
-          const u = (res && res.data && res.data.download) ? res.data.download : file.url;
+          const u = (res && res.data && (res.data.download || res.data.url)) ? (res.data.download || res.data.url) : file.url;
           if (u) copyToClipboard(u);
           else showToast('无法解析直链');
         });
@@ -982,6 +1026,9 @@
           name: rawName || '未命名文件',
           objectid: objectId,
           dataId: id,
+          courseid: courseid,
+          clazzid: clazzid,
+          cpi: cpi,
           fileType: '.' + type,
           sizeText: sizeText,
           type: type === 'video' ? 'video' : 'document'
@@ -1176,9 +1223,10 @@
           showToast('正在解析直链...');
           chrome.runtime.sendMessage({
             type: 'RESOLVE_OBJECT_INFO',
-            objectid: file.objectid
+            objectid: file.objectid,
+            item: file
           }, (res) => {
-            const u = (res && res.data && res.data.download) ? res.data.download : file.url;
+            const u = (res && res.data && (res.data.download || res.data.url)) ? (res.data.download || res.data.url) : file.url;
             if (u) copyToClipboard(u);
             else showToast('无法解析直链');
           });
@@ -1317,9 +1365,10 @@
           showToast('正在解析直链...');
           chrome.runtime.sendMessage({
             type: 'RESOLVE_OBJECT_INFO',
-            objectid: file.objectid
+            objectid: file.objectid,
+            item: file
           }, (res) => {
-            const u = (res && res.data && res.data.download) ? res.data.download : file.url;
+            const u = (res && res.data && (res.data.download || res.data.url)) ? (res.data.download || res.data.url) : file.url;
             if (u) {
               copyToClipboard(u);
             } else {

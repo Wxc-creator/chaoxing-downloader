@@ -35,6 +35,9 @@
 
 ## ✨ 核心特性
 
+- ⚡ **突破禁止下载与15字节报错拦截（v1.2.1 重磅）**  
+  深入超星 Pan/cldisk 云盘调度架构，通过动态预览令牌穿透官方对课件下载权限的封锁，直连官方高速 CDN；彻底根除“无效的参数/无权限”等 15 字节纯文本错误误存为损坏 PDF 的问题，确保文件 100% 完整原样保存！
+
 - 🌳 **全课程文件树递归透视（v1.2.0 重磅）**  
   一键自动递归穿透课程所有主文件夹与多层子目录，以 VS Code 级折叠树展示整门课的所有资料库，支持展开/折叠、查看文件数量与大小、单文件直下以及【打包下载该文件夹】。
 
@@ -65,10 +68,10 @@
 适用于 **Microsoft Edge**、**Google Chrome** 等所有 Chromium 内核浏览器：
 
 > [!TIP]
-> **🚀 最快捷安装入口**：无需 Git 环境，直接前往 👉 **[GitHub Releases 最新发布页](https://github.com/Wxc-creator/chaoxing-downloader/releases/latest)** 下载已打包好的 `chaoxing-downloader-v1.2.0.zip`，解压即用！
+> **🚀 最快捷安装入口**：无需 Git 环境，直接前往 👉 **[GitHub Releases 最新发布页](https://github.com/Wxc-creator/chaoxing-downloader/releases/latest)** 下载已打包好的 `chaoxing-downloader-v1.2.1.zip`，解压即用！
 
 1. **获取扩展程序包（三选一）**：
-   - **🌟 方式 A（最推荐，开箱即用）**：前往 [Releases 最新发布页](https://github.com/Wxc-creator/chaoxing-downloader/releases/latest) 下载 `chaoxing-downloader-v1.2.0.zip`，下载后解压到本地文件夹；
+   - **🌟 方式 A（最推荐，开箱即用）**：前往 [Releases 最新发布页](https://github.com/Wxc-creator/chaoxing-downloader/releases/latest) 下载 `chaoxing-downloader-v1.2.1.zip`，下载后解压到本地文件夹；
    - **方式 B（GitHub 源码 ZIP）**：点击本页面右上角绿色 **`Code`** 按钮，选择 **`Download ZIP`** 并解压；
    - **方式 C（Git 开发者克隆）**：
      ```bash
@@ -133,6 +136,12 @@ chaoxing-downloader/
 <details>
 <summary><b>Q1: 为什么提示“未能解析有效的下载地址”？</b></summary>
 超星平台部分资料分类为“文件夹”（Folder），文件夹本身是一个容器而非具体文件。请点击该文件夹进入子列表，当显示具体的文件项（带文件大小）时，插件将自动解析出下载链接。
+</details>
+
+<details>
+<summary><b>Q2: 为什么有些课件下载下来只有 15 字节且打不开？</b></summary>
+这是由于教师在超星后台关闭了学生的课件直接下载权限，旧版插件通过普通接口下载时，平台返回了 15 字节的纯文本报错 <code>无效的参数</code> 或 <code>无权限下载</code>（5个汉字在UTF-8下恰好为15字节）。<br/>
+在 <b>v1.2.1</b> 版本中，插件全面升级了 <b>Pan/cldisk 云盘穿透解析引擎</b>，通过动态鉴权令牌直接提取官方高速 CDN 直链，彻底突破了权限封锁，同时内置了小于 100 字节的错误文本拦截与提示保护，确保下载保存的均为完整可用的 PDF/课件！
 </details>
 
 <details>
